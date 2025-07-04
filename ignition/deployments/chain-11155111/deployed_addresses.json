@@ -1,0 +1,7 @@
+{
+  "MockUSDCModule#MockUSDC": "0x13c6EF6438567b71129f91d5c59569fa0EE425bA",
+  "MockUSDTModule#MockUSDT": "0x49c0fFd98F527E06290C7630f1E71f78707c13a1",
+  "FactoringModule#FactoringContract": "0x282a1858BfcD40DBA99c4DDfcE929F7a40C3adde",
+  "SimpleFundModule#FactoringContract": "0x666e66C04C5D139B69051cEb315ABe6221e25B8f",
+  "SimpleFundModule#SimpleFund": "0xeCBea68a8ee130d6cf4Dd7aCfA9Db413b7Ac098b"
+}

@@ -1,0 +1,49 @@
+{
+  "name": "factoring-finance-contracts",
+  "version": "1.0.0",
+  "description": "Smart contract system for factoring finance using USDC/USDT stablecoins",
+  "main": "index.js",
+  "scripts": {
+    "compile": "npx hardhat compile",
+    "test": "npx hardhat test",
+    "test:gas": "REPORT_GAS=true npx hardhat test",
+    "node": "npx hardhat node",
+    "deploy:local": "npx hardhat ignition deploy ./ignition/modules/FactoringModule.ts --network localhost",
+    "deploy:sepolia": "npx hardhat ignition deploy ./ignition/modules/FactoringModule.ts --network sepolia",
+    "deploy-ignition": "npx ts-node scripts/deploy-ignition.ts",
+    "deploy:mock-usdc:local": "npx hardhat ignition deploy ./ignition/modules/MockUSDCModule.ts --network localhost",
+    "deploy:mock-usdt:local": "npx hardhat ignition deploy ./ignition/modules/MockUSDTModule.ts --network localhost",
+    "deploy:factoring:local": "npx hardhat ignition deploy ./ignition/modules/FactoringModule.ts --network localhost",
+    "deploy:simple-fund:local": "npx hardhat ignition deploy ./ignition/modules/SimpleFundModule.ts --network localhost",
+    "deploy:fund:local": "npx hardhat ignition deploy ./ignition/modules/FundModule.ts --network localhost",
+    "verify": "npx hardhat verify",
+    "clean": "npx hardhat clean",
+    "coverage": "npx hardhat coverage",
+    "demo": "npx hardhat run scripts/demo.ts --network hardhat",
+    "demo:fund": "npx hardhat run scripts/fund-demo.ts --network hardhat",
+    "demo:simple-fund": "npx hardhat run scripts/simple-fund-demo.ts --network hardhat"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "smart-contracts",
+    "factoring",
+    "finance",
+    "usdc",
+    "usdt",
+    "nft",
+    "defi"
+  ],
+  "author": "Factoring Finance Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.0.0",
+    "hardhat": "^2.25.0"
+  },
+  "dependencies": {
+    "@aurelianoa/array-manager": "^1.2.2",
+    "@openzeppelin/contracts": "^5.3.0",
+    "@privylabs/authorized": "^1.2.1",
+    "dotenv": "^17.0.1"
+  }
+}

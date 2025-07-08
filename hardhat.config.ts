@@ -15,13 +15,6 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
-    hardhat: {
-      gas: "auto",
-      forking: {
-        url: process.env.BINANCE_TESTNET_URL || "",
-        blockNumber: 48675307,
-      },
-    },
     sepolia: {
       chainId: 11155111,
       url: process.env.SEPOLIA_URL || "",

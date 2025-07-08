@@ -418,7 +418,7 @@ describe("SimpleFund Contract", function () {
     });
 
     it("should revert with past due date", async function () {
-      const pastDueDate = Math.floor(Date.now() / 1000) - 86400; // Yesterday
+      const pastDueDate = Math.floor(Date.now() / 1000) - 86400; // yesterday
       const conditions = {
         feePercentage: 3,
         upfrontPercentage: 80,

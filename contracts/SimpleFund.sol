@@ -36,19 +36,8 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         bool acceptingDeposits; // Whether fund is accepting new deposits
     }
 
-    // Offer configuration for automatic offer creation
-    struct OfferConfig {
-        uint256 feePercentage; // Fee percentage for offers
-        uint256 upfrontPercentage; // Upfront percentage for offers
-        uint256 ownerPercentage; // Owner percentage for offers
-        uint256 minBillAmount; // Minimum bill amount to consider
-        uint256 maxBillAmount; // Maximum bill amount to consider
-        bool autoOfferEnabled; // Whether auto-offer is enabled
-    }
-
     // State variables
     FundConfig public fundConfig;
-    OfferConfig public offerConfig;
 
     uint256 public totalFundValue;
     uint256 public totalEarnings;
@@ -88,8 +77,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         address _factoringContract,
         address _usdc,
         address _usdt,
-        FundConfig memory _fundConfig,
-        OfferConfig memory _offerConfig
+        FundConfig memory _fundConfig
     ) {
         require(_factoringContract != address(0), "Invalid factoring contract");
         require(_usdc != address(0), "Invalid USDC address");
@@ -100,7 +88,6 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         USDT = IERC20(_usdt);
 
         fundConfig = _fundConfig;
-        offerConfig = _offerConfig;
     }
 
     /**
@@ -201,29 +188,18 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
      * @param billRequestId ID of the bill request
      */
     function createOfferForBillRequest(
-        uint256 billRequestId
+        uint256 billRequestId,
+        FactoringContract.Conditions memory conditions
     ) external onlyAuthorizedOperator nonReentrant whenNotPaused {
-        require(offerConfig.autoOfferEnabled, "Auto-offer disabled");
-
         // Get bill request details
         FactoringContract.BillRequest memory billRequest = factoringContract
             .getBillRequest(billRequestId);
         require(billRequest.id != 0, "Bill request does not exist");
         require(uint256(billRequest.status) == 0, "Bill request not open"); // 0 = BillRequestStatus.Open
 
-        // Check if bill amount is within our criteria
-        require(
-            billRequest.totalAmount >= offerConfig.minBillAmount,
-            "Bill amount below minimum"
-        );
-        require(
-            billRequest.totalAmount <= offerConfig.maxBillAmount,
-            "Bill amount above maximum"
-        );
-
         // Calculate required upfront amount
         uint256 upfrontAmount = (billRequest.totalAmount *
-            offerConfig.upfrontPercentage) / 100;
+            conditions.upfrontPercentage) / 100;
         require(
             fundBalances[billRequest.stablecoin] >= upfrontAmount,
             "Insufficient fund balance"
@@ -235,15 +211,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             upfrontAmount
         );
 
-        // Create conditions for the offer
-        FactoringContract.Conditions memory conditions = FactoringContract
-            .Conditions({
-                feePercentage: offerConfig.feePercentage,
-                upfrontPercentage: offerConfig.upfrontPercentage,
-                ownerPercentage: offerConfig.ownerPercentage
-            });
-
-        // Create the offer and funds are transfered
+        // Create the offer and funds are transferred
         uint256 offerId = factoringContract.createOffer(
             billRequestId,
             conditions
@@ -388,16 +356,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         emit FundConfigUpdated();
     }
 
-    /**
-     * @dev Update offer configuration (only authorized admin)
-     * @param newOfferConfig New offer configuration
-     */
-    function updateOfferConfig(
-        OfferConfig memory newOfferConfig
-    ) external onlyAuthorizedAdmin {
-        offerConfig = newOfferConfig;
-        emit OfferConfigUpdated();
-    }
+    // Removed updateOfferConfig and offerConfig state variable, as offer config is now passed as parameters
 
     /**
      * @dev Get total fund balance for a specific token

@@ -20,22 +20,12 @@ const SimpleFundModule = buildModule("SimpleFundModule", (m) => {
     acceptingDeposits: true
   };
 
-  const offerConfig = {
-    feePercentage: 3,           // 3% fee
-    upfrontPercentage: 80,      // 80% upfront
-    ownerPercentage: 17,        // 17% to owner on completion
-    minBillAmount: ethers.parseUnits("1000", 6),   // $1,000 minimum
-    maxBillAmount: ethers.parseUnits("50000", 6),  // $50,000 maximum
-    autoOfferEnabled: true
-  };
-
-  // Deploy SimpleFund contract
+  // Deploy SimpleFund contract (no offerConfig)
   const simpleFund = m.contract("SimpleFund", [
     factoringContract,
     mockUSDC,
     mockUSDT,
-    fundConfig,
-    offerConfig
+    fundConfig
   ]);
 
   return {

@@ -30,13 +30,11 @@ async function main() {
     acceptingDeposits: true
   };
 
-  const offerConfig = {
+  // Offer config values for demo
+  const conditions = {
     feePercentage: 3,
     upfrontPercentage: 80,
-    ownerPercentage: 17,
-    minBillAmount: ethers.parseUnits("1000", 6),
-    maxBillAmount: ethers.parseUnits("50000", 6),
-    autoOfferEnabled: true
+    ownerPercentage: 17
   };
 
   const SimpleFundFactory = await ethers.getContractFactory("SimpleFund");
@@ -44,8 +42,7 @@ async function main() {
     await factoringContract.getAddress(),
     await usdc.getAddress(),
     await usdc.getAddress(),
-    fundConfig,
-    offerConfig
+    fundConfig
   );
   console.log(`   SimpleFund deployed at: ${await simpleFund.getAddress()}`);
 
@@ -85,7 +82,7 @@ async function main() {
 
   // Step 3: Create offer automatically
   console.log("\n🤖 Step 3: Automatically create offer for bill request");
-  await simpleFund.createOfferForBillRequest(1);
+  await simpleFund.createOfferForBillRequest(1, conditions);
 
   const offer = await factoringContract.getOffer(1);
   const upfrontAmount = (billAmount * 80n) / 100n; // 80% upfront

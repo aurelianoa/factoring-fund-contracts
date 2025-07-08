@@ -45,22 +45,12 @@ describe("SimpleFund Contract", function () {
       acceptingDeposits: true
     };
 
-    const offerConfig = {
-      feePercentage: 3,
-      upfrontPercentage: 80,
-      ownerPercentage: 17,
-      minBillAmount: ethers.parseUnits("1000", 6),
-      maxBillAmount: ethers.parseUnits("50000", 6),
-      autoOfferEnabled: true
-    };
-
     const SimpleFundFactory = await ethers.getContractFactory("SimpleFund");
     simpleFund = await SimpleFundFactory.deploy(
       await factoringContract.getAddress(),
       await usdc.getAddress(),
       await usdt.getAddress(),
-      fundConfig,
-      offerConfig
+      fundConfig
     );
 
     // Mint tokens to admin and debtor
@@ -179,7 +169,12 @@ describe("SimpleFund Contract", function () {
       );
 
       // Create offer automatically
-      const tx = await simpleFund.createOfferForBillRequest(1);
+      const conditions: FactoringContract.ConditionsStruct = {
+        feePercentage: 3,
+        upfrontPercentage: 80,
+        ownerPercentage: 17
+      };
+      const tx = await simpleFund.createOfferForBillRequest(1, conditions);
 
       await expect(tx)
         .to.emit(simpleFund, "OfferCreatedAutomatically")
@@ -191,21 +186,15 @@ describe("SimpleFund Contract", function () {
       expect(offer.billRequestId).to.equal(1);
     });
 
-    it("Should reject bills outside amount criteria", async function () {
-      // Create a bill that's too large
-      const largeBillAmount = ethers.parseUnits("60000", 6);
-      const dueDate = Math.floor(Date.now() / 1000) + 86400;
-
-      await simpleFund.connect(owner).createBillRequestForDebtor(
-        largeBillAmount,
-        dueDate,
-        await usdc.getAddress(),
-        debtor.address
-      );
-
+    it("Should reject non-existent bill requests", async function () {
+      const conditions: FactoringContract.ConditionsStruct = {
+        feePercentage: 3,
+        upfrontPercentage: 80,
+        ownerPercentage: 17
+      };
       await expect(
-        simpleFund.createOfferForBillRequest(1)
-      ).to.be.revertedWith("Bill amount above maximum");
+        simpleFund.createOfferForBillRequest(999, conditions)
+      ).to.be.revertedWith("Bill request does not exist");
     });
   });
 
@@ -222,7 +211,12 @@ describe("SimpleFund Contract", function () {
         debtor.address
       );
 
-      await simpleFund.createOfferForBillRequest(1);
+      const conditions: FactoringContract.ConditionsStruct = {
+        feePercentage: 3,
+        upfrontPercentage: 80,
+        ownerPercentage: 17
+      };
+      await simpleFund.createOfferForBillRequest(1, conditions);
 
       // Accept the offer using fund's own method since fund owns the NFT
       await simpleFund.connect(owner).acceptOfferForOwnedBill(1);
@@ -288,23 +282,7 @@ describe("SimpleFund Contract", function () {
       expect(updatedConfig.acceptingDeposits).to.equal(newConfig.acceptingDeposits);
     });
 
-    it("Should allow admin to update offer config", async function () {
-      const newOfferConfig = {
-        feePercentage: 4,
-        upfrontPercentage: 85,
-        ownerPercentage: 11,
-        minBillAmount: ethers.parseUnits("2000", 6),
-        maxBillAmount: ethers.parseUnits("30000", 6),
-        autoOfferEnabled: false
-      };
-
-      const tx = await simpleFund.connect(owner).updateOfferConfig(newOfferConfig);
-      await expect(tx).to.emit(simpleFund, "OfferConfigUpdated");
-
-      const updatedConfig = await simpleFund.offerConfig();
-      expect(updatedConfig.feePercentage).to.equal(newOfferConfig.feePercentage);
-      expect(updatedConfig.autoOfferEnabled).to.equal(newOfferConfig.autoOfferEnabled);
-    });
+    // Removed test for updateOfferConfig and offerConfig state variable, as offer config is now passed as parameters
 
     it("Should prevent unauthorized users from updating configs", async function () {
       const newConfig = {

@@ -55,7 +55,8 @@ describe("Fund Contract", function () {
       ownerPercentage: 17,
       minBillAmount: ethers.parseUnits("1000", 6),
       maxBillAmount: ethers.parseUnits("20000", 6),
-      autoOfferEnabled: true
+      autoOfferEnabled: true,
+      preferredStablecoin: await usdc.getAddress()
     };
 
     const FundFactory = await ethers.getContractFactory("Fund");
@@ -146,10 +147,10 @@ describe("Fund Contract", function () {
     it("Should create bill request for debtor", async function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400; // 24 hours
 
+      // No stablecoin param in bill request creation
       const tx = await fund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -169,7 +170,6 @@ describe("Fund Contract", function () {
       await fund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -184,6 +184,7 @@ describe("Fund Contract", function () {
       const offer = await factoringContract.getOffer(1);
       expect(offer.lender).to.equal(await fund.getAddress());
       expect(offer.billRequestId).to.equal(1);
+      expect(offer.stablecoin).to.equal(await usdc.getAddress());
     });
 
     it("Should reject bills outside amount criteria", async function () {
@@ -194,7 +195,6 @@ describe("Fund Contract", function () {
       await fund.connect(owner).createBillRequestForDebtor(
         largeBillAmount,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -213,7 +213,6 @@ describe("Fund Contract", function () {
       await fund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -221,7 +220,6 @@ describe("Fund Contract", function () {
 
       // Accept the offer using fund's own method since fund owns the NFT
       await fund.acceptOfferForOwnedBill(1);
-
     });
 
     it("Should handle bill completion and distribute profits", async function () {
@@ -270,7 +268,8 @@ describe("Fund Contract", function () {
         ownerPercentage: 11,
         minBillAmount: ethers.parseUnits("2000", 6),
         maxBillAmount: ethers.parseUnits("15000", 6),
-        autoOfferEnabled: false
+        autoOfferEnabled: false,
+        preferredStablecoin: await usdc.getAddress()
       };
 
       const tx = await fund.connect(owner).updateOfferConfig(newOfferConfig);

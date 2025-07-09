@@ -61,7 +61,8 @@ async function main() {
     ownerPercentage: 14,     // 14% completion payment
     minBillAmount: ethers.parseUnits("2000", 6),     // $2,000 minimum
     maxBillAmount: ethers.parseUnits("50000", 6),    // $50,000 maximum
-    autoOfferEnabled: true
+    autoOfferEnabled: true,
+    preferredStablecoin: await mockUSDC.getAddress()
   };
 
   const Fund = await ethers.getContractFactory("Fund");
@@ -134,14 +135,12 @@ async function main() {
   await fund.createBillRequestForDebtor(
     billAmount1,
     dueDate1,
-    await mockUSDC.getAddress(),
     debtor1.address
   );
 
   await fund.createBillRequestForDebtor(
     billAmount2,
     dueDate2,
-    await mockUSDC.getAddress(),
     debtor2.address
   );
 

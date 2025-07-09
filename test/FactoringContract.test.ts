@@ -49,13 +49,12 @@ describe("FactoringContract", function () {
 
       const tx = await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       await expect(tx)
         .to.emit(factoringContract, "BillRequestCreated")
-        .withArgs(1, debtor.address, BILL_AMOUNT, await usdc.getAddress());
+        .withArgs(1, debtor.address, BILL_AMOUNT, ethers.ZeroAddress); // No stablecoin in request
 
       // Check that NFT was minted to debtor
       expect(await factoringContract.ownerOf(1)).to.equal(debtor.address);
@@ -72,8 +71,7 @@ describe("FactoringContract", function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       // Create offer with custom conditions
@@ -85,7 +83,11 @@ describe("FactoringContract", function () {
 
       const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
 
-      const tx = await factoringContract.connect(lender1).createOffer(1, conditions);
+      const tx = await factoringContract.connect(lender1).createOffer(
+        1,
+        await usdc.getAddress(),
+        conditions
+      );
 
       await expect(tx)
         .to.emit(factoringContract, "OfferCreated")
@@ -108,16 +110,15 @@ describe("FactoringContract", function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       // Create two different offers
       const conditions1 = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
       const conditions2 = { feePercentage: 2, upfrontPercentage: 80, ownerPercentage: 18 };
 
-      await factoringContract.connect(lender1).createOffer(1, conditions1);
-      await factoringContract.connect(lender2).createOffer(1, conditions2);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions1);
+      await factoringContract.connect(lender2).createOffer(1, await usdc.getAddress(), conditions2);
 
       // Check that both offers exist
       const offers = await factoringContract.getOffersForBillRequest(1);
@@ -129,15 +130,15 @@ describe("FactoringContract", function () {
     it("Should allow debtor to accept an offer", async function () {
       // Create bill request
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       // Create offer
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
-      await factoringContract.connect(lender1).createOffer(1, conditions);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
 
       const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
       const debtorBalanceBefore = await usdc.balanceOf(debtor.address);
@@ -171,14 +172,14 @@ describe("FactoringContract", function () {
     it("Should allow debtor to complete bill payment", async function () {
       // Full workflow: bill request -> offer -> accept -> complete
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
-      await factoringContract.connect(lender1).createOffer(1, conditions);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
       await factoringContract.connect(debtor).acceptOffer(1);
 
       const lenderBalanceBefore = await usdc.balanceOf(lender1.address);
@@ -206,10 +207,10 @@ describe("FactoringContract", function () {
     it("Should refund other offers when one is accepted", async function () {
       // Create bill request
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       // Create two offers
@@ -219,8 +220,8 @@ describe("FactoringContract", function () {
       // Get balance before creating offer
       const lender2BalanceBeforeOffer = await usdc.balanceOf(lender2.address);
 
-      await factoringContract.connect(lender1).createOffer(1, conditions1);
-      await factoringContract.connect(lender2).createOffer(1, conditions2);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions1);
+      await factoringContract.connect(lender2).createOffer(1, await usdc.getAddress(), conditions2);
 
       // Get balance after creating offer (should be reduced)
       const lender2BalanceAfterOffer = await usdc.balanceOf(lender2.address);
@@ -239,14 +240,14 @@ describe("FactoringContract", function () {
     it("Should burn NFT when bill is completed but preserve bill history", async function () {
       // Full workflow: bill request -> offer -> accept -> complete
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
-      await factoringContract.connect(lender1).createOffer(1, conditions);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
       await factoringContract.connect(debtor).acceptOffer(1);
 
       // Verify NFT exists and lender owns it before completion
@@ -280,24 +281,23 @@ describe("FactoringContract", function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
 
       // First bill request
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       // Second bill request  
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT * 2n,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
 
       // Create offers and accept them (both go to lender1)
-      await factoringContract.connect(lender1).createOffer(1, conditions);
-      await factoringContract.connect(lender1).createOffer(2, conditions);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
+      await factoringContract.connect(lender1).createOffer(2, await usdc.getAddress(), conditions);
       await factoringContract.connect(debtor).acceptOffer(1);
       await factoringContract.connect(debtor).acceptOffer(2);
 
@@ -333,14 +333,14 @@ describe("FactoringContract", function () {
     it("Should burn NFT correctly when bill ownership was transferred and preserve final owner history", async function () {
       // Full workflow: bill request -> offer -> accept -> transfer -> complete
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
+
       await factoringContract.connect(debtor).createBillRequest(
         BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress()
+        dueDate
       );
 
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
-      await factoringContract.connect(lender1).createOffer(1, conditions);
+      await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
       await factoringContract.connect(debtor).acceptOffer(1);
 
       // Transfer NFT from lender1 to lender2

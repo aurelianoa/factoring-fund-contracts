@@ -131,7 +131,6 @@ describe("SimpleFund Contract", function () {
       const tx = await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -152,7 +151,6 @@ describe("SimpleFund Contract", function () {
         simpleFund.connect(unauthorizedUser).createBillRequestForDebtor(
           BILL_AMOUNT,
           dueDate,
-          await usdc.getAddress(),
           debtor.address
         )
       ).to.be.reverted;
@@ -164,7 +162,6 @@ describe("SimpleFund Contract", function () {
       await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -174,7 +171,7 @@ describe("SimpleFund Contract", function () {
         upfrontPercentage: 80,
         ownerPercentage: 17
       };
-      const tx = await simpleFund.createOfferForBillRequest(1, conditions);
+      const tx = await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
       await expect(tx)
         .to.emit(simpleFund, "OfferCreatedAutomatically")
@@ -193,7 +190,7 @@ describe("SimpleFund Contract", function () {
         ownerPercentage: 17
       };
       await expect(
-        simpleFund.createOfferForBillRequest(999, conditions)
+        simpleFund.createOfferForBillRequest(999, await usdc.getAddress(), conditions)
       ).to.be.revertedWith("Bill request does not exist");
     });
   });
@@ -207,7 +204,6 @@ describe("SimpleFund Contract", function () {
       await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
         dueDate,
-        await usdc.getAddress(),
         debtor.address
       );
 
@@ -216,7 +212,7 @@ describe("SimpleFund Contract", function () {
         upfrontPercentage: 80,
         ownerPercentage: 17
       };
-      await simpleFund.createOfferForBillRequest(1, conditions);
+      await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
       // Accept the offer using fund's own method since fund owns the NFT
       await simpleFund.connect(owner).acceptOfferForOwnedBill(1);

@@ -62,7 +62,6 @@ contract FactoringContract is
     struct BillRequest {
         uint256 id;
         address debtor;
-        address stablecoin; // USDC or USDT
         uint256 totalAmount;
         uint256 dueDate;
         BillRequestStatus status;
@@ -79,6 +78,7 @@ contract FactoringContract is
         uint256 id;
         uint256 billRequestId;
         address lender;
+        address stablecoin; // USDC or USDT chosen by lender
         Conditions conditions;
         uint256 depositedAmount; // Amount deposited by lender
         OfferStatus status;
@@ -222,19 +222,13 @@ contract FactoringContract is
      * @dev Create a new bill request (debtor creates this)
      * @param totalAmount Total amount of the bill
      * @param dueDate Due date of the bill (timestamp)
-     * @param stablecoin Address of stablecoin (USDC or USDT)
      */
     function createBillRequest(
         uint256 totalAmount,
-        uint256 dueDate,
-        address stablecoin
+        uint256 dueDate
     ) external nonReentrant whenNotPaused returns (uint256) {
         require(totalAmount > 0, "Amount must be greater than 0");
         require(dueDate > block.timestamp, "Due date must be in the future");
-        require(
-            stablecoin == address(USDC) || stablecoin == address(USDT),
-            "Unsupported stablecoin"
-        );
 
         uint256 billRequestId = _nextBillId++;
 
@@ -242,7 +236,6 @@ contract FactoringContract is
         billRequests[billRequestId] = BillRequest({
             id: billRequestId,
             debtor: msg.sender,
-            stablecoin: stablecoin,
             totalAmount: totalAmount,
             dueDate: dueDate,
             status: BillRequestStatus.Open
@@ -258,7 +251,7 @@ contract FactoringContract is
             billRequestId,
             msg.sender,
             totalAmount,
-            stablecoin
+            address(0) // No stablecoin specified at request time
         );
 
         return billRequestId;
@@ -267,10 +260,12 @@ contract FactoringContract is
     /**
      * @dev Create an offer for a bill request (lender creates this)
      * @param billRequestId ID of the bill request
+     * @param stablecoin Address of stablecoin (USDC or USDT) chosen by lender
      * @param conditions Conditions offered by the lender
      */
     function createOffer(
         uint256 billRequestId,
+        address stablecoin,
         Conditions memory conditions
     ) external nonReentrant whenNotPaused returns (uint256) {
         BillRequest storage billRequest = billRequests[billRequestId];
@@ -278,6 +273,10 @@ contract FactoringContract is
         require(
             billRequest.status == BillRequestStatus.Open,
             "Bill request not open"
+        );
+        require(
+            stablecoin == address(USDC) || stablecoin == address(USDT),
+            "Unsupported stablecoin"
         );
         require(
             conditions.feePercentage +
@@ -298,7 +297,7 @@ contract FactoringContract is
             conditions.upfrontPercentage) / BASIS_POINTS;
 
         // Transfer upfront amount from lender to contract
-        IERC20(billRequest.stablecoin).safeTransferFrom(
+        IERC20(stablecoin).safeTransferFrom(
             msg.sender,
             address(this),
             upfrontAmount
@@ -309,6 +308,7 @@ contract FactoringContract is
             id: offerId,
             billRequestId: billRequestId,
             lender: msg.sender,
+            stablecoin: stablecoin,
             conditions: conditions,
             depositedAmount: upfrontAmount,
             status: OfferStatus.Active
@@ -343,8 +343,8 @@ contract FactoringContract is
             "Only NFT owner can accept offers"
         );
 
-        // Transfer upfront amount to debtor
-        IERC20(billRequest.stablecoin).safeTransfer(
+        // Transfer upfront amount to debtor using stablecoin from offer
+        IERC20(offer.stablecoin).safeTransfer(
             msg.sender,
             offer.depositedAmount
         );
@@ -367,7 +367,7 @@ contract FactoringContract is
             id: offer.billRequestId,
             debtor: msg.sender,
             lender: offer.lender,
-            stablecoin: billRequest.stablecoin,
+            stablecoin: offer.stablecoin, // Use stablecoin from accepted offer
             totalAmount: billRequest.totalAmount,
             upfrontPaid: offer.depositedAmount,
             remainingAmount: billRequest.totalAmount - offer.depositedAmount,
@@ -395,7 +395,7 @@ contract FactoringContract is
             msg.sender,
             offer.lender,
             billRequest.totalAmount,
-            billRequest.stablecoin
+            offer.stablecoin // Use stablecoin from accepted offer
         );
     }
 
@@ -414,11 +414,8 @@ contract FactoringContract is
             if (offerId != acceptedOfferId) {
                 Offer storage offer = offers[offerId];
                 if (offer.status == OfferStatus.Active) {
-                    // Refund the lender
-                    BillRequest storage billRequest = billRequests[
-                        billRequestId
-                    ];
-                    IERC20(billRequest.stablecoin).safeTransfer(
+                    // Refund the lender using the stablecoin from the offer
+                    IERC20(offer.stablecoin).safeTransfer(
                         offer.lender,
                         offer.depositedAmount
                     );
@@ -529,10 +526,8 @@ contract FactoringContract is
         require(offer.status == OfferStatus.Active, "Offer not active");
         require(offer.lender == msg.sender, "Only lender can withdraw offer");
 
-        BillRequest storage billRequest = billRequests[offer.billRequestId];
-
-        // Refund the lender
-        IERC20(billRequest.stablecoin).safeTransfer(
+        // Refund the lender using the stablecoin from the offer
+        IERC20(offer.stablecoin).safeTransfer(
             msg.sender,
             offer.depositedAmount
         );
@@ -552,8 +547,8 @@ contract FactoringContract is
             uint256 offerId = offerIds[i];
             Offer storage offer = offers[offerId];
             if (offer.status == OfferStatus.Active) {
-                BillRequest storage billRequest = billRequests[billRequestId];
-                IERC20(billRequest.stablecoin).safeTransfer(
+                // Refund the lender using the stablecoin from the offer
+                IERC20(offer.stablecoin).safeTransfer(
                     offer.lender,
                     offer.depositedAmount
                 );

@@ -54,6 +54,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 ownerPercentage; // Owner percentage for offers
         uint256 minBillAmount; // Minimum bill amount to consider
         uint256 maxBillAmount; // Maximum bill amount to consider
+        address preferredStablecoin; // Preferred stablecoin for offers (USDC or USDT)
         bool autoOfferEnabled; // Whether auto-offer is enabled
     }
 
@@ -222,13 +223,11 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
      * @dev Create bill request on behalf of debtor
      * @param totalAmount Total amount of the bill
      * @param dueDate Due date of the bill
-     * @param stablecoin Stablecoin address
      * @param debtor Address of the actual debtor
      */
     function createBillRequestForDebtor(
         uint256 totalAmount,
         uint256 dueDate,
-        address stablecoin,
         address debtor
     ) external onlyAuthorizedAdmin returns (uint256) {
         require(debtor != address(0), "Invalid debtor address");
@@ -236,8 +235,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // The fund creates the bill request, but tracks the actual debtor
         uint256 billRequestId = factoringContract.createBillRequest(
             totalAmount,
-            dueDate,
-            stablecoin
+            dueDate
         );
 
         activeBillRequests[billRequestId] = true;
@@ -255,6 +253,11 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 billRequestId
     ) external nonReentrant whenNotPaused {
         require(offerConfig.autoOfferEnabled, "Auto-offer disabled");
+        require(
+            offerConfig.preferredStablecoin == address(USDC) ||
+                offerConfig.preferredStablecoin == address(USDT),
+            "Invalid preferred stablecoin"
+        );
 
         // Get bill request details
         FactoringContract.BillRequest memory billRequest = factoringContract
@@ -276,7 +279,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 upfrontAmount = (billRequest.totalAmount *
             offerConfig.upfrontPercentage) / 100;
         require(
-            fundBalances[billRequest.stablecoin] >= upfrontAmount,
+            fundBalances[offerConfig.preferredStablecoin] >= upfrontAmount,
             "Insufficient fund balance"
         );
 
@@ -289,7 +292,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             });
 
         // Approve the factoring contract to spend our tokens
-        IERC20(billRequest.stablecoin).safeIncreaseAllowance(
+        IERC20(offerConfig.preferredStablecoin).safeIncreaseAllowance(
             address(factoringContract),
             upfrontAmount
         );
@@ -297,12 +300,13 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Create the offer
         uint256 offerId = factoringContract.createOffer(
             billRequestId,
+            offerConfig.preferredStablecoin,
             conditions
         );
 
         // Track the offer
         billRequestToOffer[billRequestId] = offerId;
-        fundBalances[billRequest.stablecoin] -= upfrontAmount;
+        fundBalances[offerConfig.preferredStablecoin] -= upfrontAmount;
 
         emit OfferCreatedAutomatically(billRequestId, offerId, upfrontAmount);
     }

@@ -146,13 +146,11 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
      * @dev Create bill request for a debtor
      * @param totalAmount Total bill amount
      * @param dueDate Due date for the bill
-     * @param stablecoin Stablecoin address
      * @param realDebtor Address of the real debtor
      */
     function createBillRequestForDebtor(
         uint256 totalAmount,
         uint256 dueDate,
-        address stablecoin,
         address realDebtor
     )
         external
@@ -163,16 +161,11 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     {
         require(realDebtor != address(0), "Invalid debtor address");
         require(totalAmount > 0, "Amount must be greater than 0");
-        require(
-            stablecoin == address(USDC) || stablecoin == address(USDT),
-            "Unsupported stablecoin"
-        );
 
-        // Create bill request with fund as debtor
+        // Create bill request with fund as debtor (no stablecoin specified)
         uint256 billRequestId = factoringContract.createBillRequest(
             totalAmount,
-            dueDate,
-            stablecoin
+            dueDate
         );
 
         // Mark as active
@@ -186,11 +179,19 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     /**
      * @dev Automatically create offer for bill requests
      * @param billRequestId ID of the bill request
+     * @param stablecoin Address of stablecoin to use for the offer
+     * @param conditions Offer conditions
      */
     function createOfferForBillRequest(
         uint256 billRequestId,
+        address stablecoin,
         FactoringContract.Conditions memory conditions
     ) external onlyAuthorizedOperator nonReentrant whenNotPaused {
+        require(
+            stablecoin == address(USDC) || stablecoin == address(USDT),
+            "Unsupported stablecoin"
+        );
+
         // Get bill request details
         FactoringContract.BillRequest memory billRequest = factoringContract
             .getBillRequest(billRequestId);
@@ -201,19 +202,17 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 upfrontAmount = (billRequest.totalAmount *
             conditions.upfrontPercentage) / 100;
         require(
-            fundBalances[billRequest.stablecoin] >= upfrontAmount,
+            fundBalances[stablecoin] >= upfrontAmount,
             "Insufficient fund balance"
         );
 
         // Approve FactoringContract to spend our tokens for the offer
-        IERC20(billRequest.stablecoin).approve(
-            address(factoringContract),
-            upfrontAmount
-        );
+        IERC20(stablecoin).approve(address(factoringContract), upfrontAmount);
 
         // Create the offer and funds are transferred
         uint256 offerId = factoringContract.createOffer(
             billRequestId,
+            stablecoin,
             conditions
         );
 
@@ -452,8 +451,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Step 1: Create bill request (SimpleFund acts as debtor)
         uint256 billRequestId = factoringContract.createBillRequest(
             totalAmount,
-            dueDate,
-            stablecoin
+            dueDate
         );
 
         // Mark as active
@@ -465,6 +463,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Step 3: Create offer (SimpleFund acts as lender)
         uint256 offerId = factoringContract.createOffer(
             billRequestId,
+            stablecoin,
             conditions
         );
 

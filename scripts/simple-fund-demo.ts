@@ -73,7 +73,6 @@ async function main() {
   const billRequestTx = await simpleFund.connect(owner).createBillRequestForDebtor(
     billAmount,
     dueDate,
-    await usdc.getAddress(),
     debtor.address
   );
 
@@ -82,7 +81,7 @@ async function main() {
 
   // Step 3: Create offer automatically
   console.log("\n🤖 Step 3: Automatically create offer for bill request");
-  await simpleFund.createOfferForBillRequest(1, conditions);
+  await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
   const offer = await factoringContract.getOffer(1);
   const upfrontAmount = (billAmount * 80n) / 100n; // 80% upfront

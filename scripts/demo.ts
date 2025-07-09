@@ -76,8 +76,7 @@ async function main() {
 
   const createTx = await factoringContract.connect(debtor).createBillRequest(
     billAmount,
-    dueDate,
-    await mockUSDC.getAddress()
+    dueDate
   );
   await createTx.wait();
 
@@ -97,7 +96,7 @@ async function main() {
     ownerPercentage: 10   // 10% to debtor on completion
   };
 
-  await factoringContract.connect(lender1).createOffer(1, conditions1);
+  await factoringContract.connect(lender1).createOffer(1, await mockUSDC.getAddress(), conditions1);
   const upfrontAmount1 = (billAmount * 85n) / 100n;
 
   console.log(`   Lender1 offer: ${conditions1.upfrontPercentage}% upfront, ${conditions1.feePercentage}% fee, ${conditions1.ownerPercentage}% completion`);
@@ -110,7 +109,7 @@ async function main() {
     ownerPercentage: 17   // 17% to debtor on completion
   };
 
-  await factoringContract.connect(lender2).createOffer(1, conditions2);
+  await factoringContract.connect(lender2).createOffer(1, await mockUSDC.getAddress(), conditions2);
   const upfrontAmount2 = (billAmount * 80n) / 100n;
 
   console.log(`   Lender2 offer: ${conditions2.upfrontPercentage}% upfront, ${conditions2.feePercentage}% fee, ${conditions2.ownerPercentage}% completion`);

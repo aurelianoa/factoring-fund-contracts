@@ -197,7 +197,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Calculate required upfront amount
         uint256 upfrontAmount = (billRequest.totalAmount *
-            conditions.upfrontPercentage) / 100;
+            conditions.upfrontPercentage) / factoringContract.BASIS_POINTS();
         require(
             fundBalances[stablecoin] >= upfrontAmount,
             "Insufficient fund balance"
@@ -295,11 +295,11 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Calculate total return (owner's share from the bill completion)
         uint256 totalReturn = (bill.totalAmount *
-            bill.conditions.ownerPercentage) / 100;
+            bill.conditions.ownerPercentage) / factoringContract.BASIS_POINTS();
 
         // Calculate management fee
         uint256 managementFee = (totalReturn *
-            fundConfig.managementFeePercentage) / 10000; // basis points
+            fundConfig.managementFeePercentage) / factoringContract.BASIS_POINTS(); // basis points
         uint256 netReturn = totalReturn - managementFee;
 
         // Update fund balances
@@ -430,16 +430,16 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         require(dueDate > block.timestamp, "Due date must be in the future");
 
         // Validate conditions
-        require(conditions.feePercentage <= 100, "Fee percentage too high");
+        require(conditions.feePercentage <= factoringContract.BASIS_POINTS(), "Fee percentage too high");
         require(
-            conditions.upfrontPercentage <= 100,
+            conditions.upfrontPercentage <= factoringContract.BASIS_POINTS(),
             "Upfront percentage too high"
         );
-        require(conditions.ownerPercentage <= 100, "Owner percentage too high");
+        require(conditions.ownerPercentage <= factoringContract.BASIS_POINTS(), "Owner percentage too high");
 
         // Calculate required upfront amount
         uint256 upfrontAmount = (totalAmount * conditions.upfrontPercentage) /
-            100;
+            factoringContract.BASIS_POINTS();
         require(
             fundBalances[stablecoin] >= upfrontAmount,
             "Insufficient fund balance for upfront payment"

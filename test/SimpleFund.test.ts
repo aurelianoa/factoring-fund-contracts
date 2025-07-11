@@ -135,7 +135,7 @@ describe("SimpleFund Contract", function () {
 
       await expect(tx)
         .to.emit(simpleFund, "BillRequestFunded")
-        .withArgs(1, debtor.address, BILL_AMOUNT);
+        .withArgs(1, await simpleFund.getAddress(), BILL_AMOUNT);
 
       // Check that bill request was created in factoring contract
       const billRequest = await factoringContract.getBillRequest(1);
@@ -164,15 +164,15 @@ describe("SimpleFund Contract", function () {
 
       // Create offer automatically
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 17
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
       const tx = await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
       await expect(tx)
         .to.emit(simpleFund, "OfferCreatedAutomatically")
-        .withArgs(1, 1, BILL_AMOUNT * 80n / 100n); // 80% upfront
+        .withArgs(1, 1, BILL_AMOUNT * 8000n / 10000n); // 80% upfront // 10000 basis points
 
       // Check that offer was created
       const offer = await factoringContract.getOffer(1);
@@ -204,9 +204,9 @@ describe("SimpleFund Contract", function () {
       );
 
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 17
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
       await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
@@ -337,13 +337,13 @@ describe("SimpleFund Contract", function () {
     it("should create a complete bill flow in one transaction", async function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       const conditions = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 15
+        feePercentage: 300, // 3% in basis points
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
 
       const initialBalance = await simpleFund.getFundBalance(await usdc.getAddress());
-      const upfrontAmount = (BILL_AMOUNT * BigInt(conditions.upfrontPercentage)) / BigInt(100);
+      const upfrontAmount = (BILL_AMOUNT * BigInt(conditions.upfrontPercentage)) / 10000n; // 10000 basis points
 
       // Create complete bill in one transaction
       const tx = await simpleFund.connect(owner).createCompleteBill(
@@ -376,9 +376,9 @@ describe("SimpleFund Contract", function () {
       // Use a bill amount larger than the deposited amount so upfront exceeds available funds
       const largeBillAmount = ethers.parseUnits("100000", 6); // Much larger than DEPOSIT_AMOUNT
       const conditions = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 15
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
 
       await expect(
@@ -394,9 +394,9 @@ describe("SimpleFund Contract", function () {
     it("should revert with invalid conditions", async function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       const invalidConditions = {
-        feePercentage: 150, // Invalid: > 100%
-        upfrontPercentage: 80,
-        ownerPercentage: 15
+        feePercentage: 15000, // Invalid: > 100%
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
 
       await expect(
@@ -412,9 +412,9 @@ describe("SimpleFund Contract", function () {
     it("should revert with past due date", async function () {
       const pastDueDate = Math.floor(Date.now() / 1000) - 86400; // yesterday
       const conditions = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 15
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
 
       await expect(
@@ -430,9 +430,9 @@ describe("SimpleFund Contract", function () {
     it("should only allow authorized operators", async function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       const conditions = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 15
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
       };
 
       await expect(

@@ -36,7 +36,7 @@ contract FactoringContract is
     IERC20 public immutable USDT;
 
     // Constants
-    uint256 public constant BASIS_POINTS = 100;
+    uint256 public constant BASIS_POINTS = 10_000; /// 100 * 100
 
     // Default conditions
     Conditions public defaultConditions =

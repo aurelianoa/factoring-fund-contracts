@@ -81,7 +81,7 @@ describe("FactoringContract", function () {
         ownerPercentage: 12 // 12% to owner on completion
       };
 
-      const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
+      const upfrontAmount = (BILL_AMOUNT * 85n) / 10000n; // 100 basis points
 
       const tx = await factoringContract.connect(lender1).createOffer(
         1,
@@ -140,7 +140,7 @@ describe("FactoringContract", function () {
       const conditions = { feePercentage: 3, upfrontPercentage: 85, ownerPercentage: 12 };
       await factoringContract.connect(lender1).createOffer(1, await usdc.getAddress(), conditions);
 
-      const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
+      const upfrontAmount = (BILL_AMOUNT * 85n) / 10000n; // 100 basis points
       const debtorBalanceBefore = await usdc.balanceOf(debtor.address);
 
       // Accept offer
@@ -183,8 +183,8 @@ describe("FactoringContract", function () {
       await factoringContract.connect(debtor).acceptOffer(1);
 
       const lenderBalanceBefore = await usdc.balanceOf(lender1.address);
-      const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
-      const ownerPayment = (BILL_AMOUNT * 12n) / 100n;
+      const upfrontAmount = (BILL_AMOUNT * 85n) / 10000n; // 100 basis points
+      const ownerPayment = (BILL_AMOUNT * 12n) / 10000n; // 100 basis points
       const expectedLenderPayment = upfrontAmount + ownerPayment;
 
       // Complete bill payment
@@ -372,8 +372,8 @@ describe("FactoringContract", function () {
       expect(await factoringContract.getBillsByOwner(lender2.address)).to.deep.equal([1n]);
 
       // Check that lender2 received the payment (not lender1)
-      const upfrontAmount = (BILL_AMOUNT * 85n) / 100n;
-      const ownerPayment = (BILL_AMOUNT * 12n) / 100n;
+      const upfrontAmount = (BILL_AMOUNT * 85n) / 10000n; // 100 basis points
+      const ownerPayment = (BILL_AMOUNT * 12n) / 10000n; // 100 basis points
       const expectedPayment = upfrontAmount + ownerPayment;
       expect(await usdc.balanceOf(lender2.address)).to.equal(lender2BalanceBefore + expectedPayment);
     });

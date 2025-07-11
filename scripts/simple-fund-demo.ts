@@ -72,8 +72,7 @@ async function main() {
   const dueDate = Math.floor(Date.now() / 1000) + 86400; // 24 hours
   const billRequestTx = await simpleFund.connect(owner).createBillRequestForDebtor(
     billAmount,
-    dueDate,
-    debtor.address
+    dueDate
   );
 
   console.log(`   Bill request created for $${ethers.formatUnits(billAmount, 6)}`);

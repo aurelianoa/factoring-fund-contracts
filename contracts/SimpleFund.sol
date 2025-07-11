@@ -143,15 +143,13 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     }
 
     /**
-     * @dev Create bill request for a debtor
+     * @dev Create bill request (SimpleFund acts as debtor)
      * @param totalAmount Total bill amount
      * @param dueDate Due date for the bill
-     * @param realDebtor Address of the real debtor
      */
     function createBillRequestForDebtor(
         uint256 totalAmount,
-        uint256 dueDate,
-        address realDebtor
+        uint256 dueDate
     )
         external
         onlyAuthorizedOperator
@@ -159,7 +157,6 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         whenNotPaused
         returns (uint256)
     {
-        require(realDebtor != address(0), "Invalid debtor address");
         require(totalAmount > 0, "Amount must be greater than 0");
 
         // Create bill request with fund as debtor (no stablecoin specified)
@@ -171,7 +168,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Mark as active
         activeBillRequests[billRequestId] = true;
 
-        emit BillRequestFunded(billRequestId, realDebtor, totalAmount);
+        emit BillRequestFunded(billRequestId, address(this), totalAmount);
 
         return billRequestId;
     }

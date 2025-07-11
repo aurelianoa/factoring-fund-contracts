@@ -130,8 +130,7 @@ describe("SimpleFund Contract", function () {
 
       const tx = await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
-        dueDate,
-        debtor.address
+        dueDate
       );
 
       await expect(tx)
@@ -150,8 +149,7 @@ describe("SimpleFund Contract", function () {
       await expect(
         simpleFund.connect(unauthorizedUser).createBillRequestForDebtor(
           BILL_AMOUNT,
-          dueDate,
-          debtor.address
+          dueDate
         )
       ).to.be.reverted;
     });
@@ -161,8 +159,7 @@ describe("SimpleFund Contract", function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
-        dueDate,
-        debtor.address
+        dueDate
       );
 
       // Create offer automatically
@@ -203,8 +200,7 @@ describe("SimpleFund Contract", function () {
       const dueDate = Math.floor(Date.now() / 1000) + 86400;
       await simpleFund.connect(owner).createBillRequestForDebtor(
         BILL_AMOUNT,
-        dueDate,
-        debtor.address
+        dueDate
       );
 
       const conditions: FactoringContract.ConditionsStruct = {

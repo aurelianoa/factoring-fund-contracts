@@ -1,18 +1,9 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
-import { ethers } from "hardhat";
-import MockUSDCModule from "./MockUSDCModule";
-import MockUSDTModule from "./MockUSDTModule";
+import FactoringModule from "./FactoringModule";
 
 const SimpleFundModule = buildModule("SimpleFundModule", (m) => {
-  // Use mock tokens from separate modules
-  const { mockUSDC } = m.useModule(MockUSDCModule);
-  const { mockUSDT } = m.useModule(MockUSDTModule);
-
-  // Deploy the main factoring contract first (required for SimpleFund)
-  const factoringContract = m.contract("FactoringContract", [
-    mockUSDC,
-    mockUSDT
-  ]);
+  // Use FactoringModule for tokens and factoring contract
+  const { mockUSDC, mockUSDT, factoringContract } = m.useModule(FactoringModule);
 
   // SimpleFund configuration
   const fundConfig = {

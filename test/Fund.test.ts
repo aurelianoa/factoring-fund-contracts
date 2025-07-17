@@ -227,7 +227,7 @@ describe("Fund Contract", function () {
       const bill = await factoringContract.getBill(1);
 
       // Pay the bill through the fund
-      await fund.connect(debtor).payBillForDebtor(1, debtor.address);
+      await fund.connect(debtor).payBillForDebtor(1);
 
       // Handle completion
       const tx = await fund.handleBillCompletion(1);

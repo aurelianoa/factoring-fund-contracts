@@ -347,16 +347,10 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     }
 
     /**
-     * @dev Pay debtor bill through the fund
+     * @dev Pay debtor bill through the fund. The caller (msg.sender) must be the actual debtor.
      * @param billId ID of the bill to pay
-     * @param debtor Address of the actual debtor
      */
-    function payBillForDebtor(
-        uint256 billId,
-        address debtor
-    ) external nonReentrant {
-        require(debtor != address(0), "Invalid debtor address");
-
+    function payBillForDebtor(uint256 billId) external nonReentrant {
         // Get bill details
         FactoringContract.Bill memory bill = factoringContract.getBill(billId);
         require(bill.id != 0, "Bill does not exist");
@@ -365,7 +359,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Debtor must transfer the full amount to the fund first
         IERC20(bill.stablecoin).safeTransferFrom(
-            debtor, //TODO: funds must come from the msg.sender
+            msg.sender,
             address(this),
             bill.totalAmount
         );

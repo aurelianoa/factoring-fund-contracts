@@ -177,11 +177,11 @@ async function main() {
   console.log("💸 Step 5: Debtors pay their bills in full");
 
   // Debtor1 pays through fund
-  await fund.connect(debtor1).payBillForDebtor(1, debtor1.address);
+  await fund.connect(debtor1).payBillForDebtor(1);
   await fund.handleBillCompletion(1);
 
   // Debtor2 pays through fund  
-  await fund.connect(debtor2).payBillForDebtor(2, debtor2.address);
+  await fund.connect(debtor2).payBillForDebtor(2);
   await fund.handleBillCompletion(2);
 
   console.log(`   Debtor1 paid: $${ethers.formatUnits(billAmount1, 6)}`);

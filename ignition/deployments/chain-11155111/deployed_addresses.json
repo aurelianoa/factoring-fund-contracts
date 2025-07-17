@@ -1,6 +1,6 @@
 {
-  "MockUSDCModule#MockUSDC": "0x5C65D31C30F959CE9CB4C127955d99D8EebAef4A",
-  "MockUSDTModule#MockUSDT": "0x6b20f91D029674d705140D397bCa86a2a8B77110",
-  "FactoringModule#FactoringContract": "0x27239aa3b0b74a8581FfF2bad3BB3Fc2D64A5b66",
-  "SimpleFundModule#SimpleFund": "0x460a5AeED753D39200f6Ced6A74980746eF5C7a0"
+  "MockUSDCModule#MockUSDC": "0x40632a01a6FcB996F80c94B28c207280d16deC2E",
+  "MockUSDTModule#MockUSDT": "0x6Cd265BE4584c417159b24A25a4aB14dFf68Cc23",
+  "FactoringModule#FactoringContract": "0xBeB35e755FeFA5839eCb12AFf72D73bb1feA409b",
+  "SimpleFundModule#SimpleFund": "0xA51339cdCCEe9eadEdeE412ba2e8FfDf795D8921"
 }

@@ -435,7 +435,6 @@ contract FactoringContract is
         Bill storage bill = bills[billId];
         require(bill.id != 0, "Bill does not exist");
         require(bill.status == BillStatus.Active, "Bill not active");
-        require(msg.sender == bill.debtor, "Only debtor can complete bill");
 
         uint256 totalPayment = bill.totalAmount;
 

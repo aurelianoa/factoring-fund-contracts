@@ -115,7 +115,7 @@ describe("SimpleFund Contract", function () {
 
       await expect(
         simpleFund.connect(owner).withdraw(DEPOSIT_AMOUNT * 2n, await usdc.getAddress())
-      ).to.be.revertedWith("Insufficient fund balance");
+      ).to.be.revertedWith("Insufficient balance");
     });
   });
 
@@ -190,6 +190,86 @@ describe("SimpleFund Contract", function () {
         simpleFund.createOfferForBillRequest(999, await usdc.getAddress(), conditions)
       ).to.be.revertedWith("Bill request does not exist");
     });
+
+    it("Should withdraw an active offer", async function () {
+      // Create bill request first
+      const dueDate = Math.floor(Date.now() / 1000) + 86400;
+      await simpleFund.connect(owner).createBillRequestForDebtor(
+        BILL_AMOUNT,
+        dueDate
+      );
+
+      // Create offer
+      const conditions: FactoringContract.ConditionsStruct = {
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
+      };
+      await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
+
+      // Check fund balance before withdrawal
+      const balanceBefore = await simpleFund.getFundBalance(await usdc.getAddress());
+      const totalValueBefore = await simpleFund.getTotalFundValue();
+
+      // Get offer details
+      const offer = await factoringContract.getOffer(1);
+      const depositedAmount = offer.depositedAmount;
+
+      // Withdraw the offer
+      const tx = await simpleFund.connect(owner).withdrawOffer(1);
+
+      await expect(tx)
+        .to.emit(simpleFund, "OfferWithdrawn")
+        .withArgs(1, 1, depositedAmount);
+
+      // Check that funds were returned to the fund
+      const balanceAfter = await simpleFund.getFundBalance(await usdc.getAddress());
+      const totalValueAfter = await simpleFund.getTotalFundValue();
+
+      expect(balanceAfter).to.equal(balanceBefore + depositedAmount);
+      expect(totalValueAfter).to.equal(totalValueBefore + depositedAmount);
+
+      // Check that offer status is now withdrawn
+      const updatedOffer = await factoringContract.getOffer(1);
+      expect(updatedOffer.status).to.equal(2); // OfferStatus.Withdrawn
+    });
+
+    it("Should prevent non-fund offers from being withdrawn", async function () {
+      // Create bill request from another account
+      const dueDate = Math.floor(Date.now() / 1000) + 86400;
+      await factoringContract.connect(unauthorizedUser).createBillRequest(
+        BILL_AMOUNT,
+        dueDate
+      );
+
+      // Create offer from unauthorizedUser (not the fund)
+      const conditions = {
+        feePercentage: 300,
+        upfrontPercentage: 8000,
+        ownerPercentage: 1500
+      };
+
+      // Mint tokens and approve for unauthorizedUser
+      await usdc.mint(unauthorizedUser.address, BILL_AMOUNT);
+      await usdc.connect(unauthorizedUser).approve(factoringContract.getAddress(), BILL_AMOUNT);
+
+      await factoringContract.connect(unauthorizedUser).createOffer(
+        1,
+        await usdc.getAddress(),
+        conditions
+      );
+
+      // Try to withdraw the offer from SimpleFund (should fail)
+      await expect(
+        simpleFund.connect(owner).withdrawOffer(1)
+      ).to.be.revertedWith("Fund is not the lender for this offer");
+    });
+
+    it("Should prevent withdrawal of non-existent offers", async function () {
+      await expect(
+        simpleFund.connect(owner).withdrawOffer(999)
+      ).to.be.revertedWith("Offer does not exist");
+    });
   });
 
   describe("Bill Completion and Management Fees", function () {
@@ -222,7 +302,7 @@ describe("SimpleFund Contract", function () {
       const initialManagementFees = await simpleFund.managementFeesCollected();
 
       // Pay the bill through the fund (this will automatically handle completion)
-      const tx = await simpleFund.connect(debtor).payBillForDebtor(1, debtor.address);
+      const tx = await simpleFund.connect(debtor).payBillForDebtor(1);
 
       await expect(tx)
         .to.emit(simpleFund, "BillCompleted");
@@ -237,7 +317,7 @@ describe("SimpleFund Contract", function () {
 
     it("Should allow owner to withdraw management fees", async function () {
       // Complete bill first to generate fees (automatically handles completion)
-      await simpleFund.connect(debtor).payBillForDebtor(1, debtor.address);
+      await simpleFund.connect(debtor).payBillForDebtor(1);
 
       const managementFees = await simpleFund.managementFeesCollected();
       const balanceBefore = await usdc.balanceOf(owner.address);
@@ -251,11 +331,59 @@ describe("SimpleFund Contract", function () {
 
     it("Should prevent non-owner from withdrawing management fees", async function () {
       // Complete bill first to generate fees (automatically handles completion)
-      await simpleFund.connect(debtor).payBillForDebtor(1, debtor.address);
+      await simpleFund.connect(debtor).payBillForDebtor(1);
 
       await expect(
         simpleFund.connect(admin).withdrawManagementFees(await usdc.getAddress())
       ).to.be.reverted;
+    });
+
+    it("Should allow owner to withdraw all funds of a specific stablecoin", async function () {
+      // Setup: Add some funds and create/complete a bill to have mixed balances
+      await simpleFund.connect(owner).deposit(ethers.parseUnits("5000", 6), await usdc.getAddress());
+
+      // Create and complete a bill to generate some earnings
+      await simpleFund.connect(debtor).payBillForDebtor(1);
+
+      // Get the actual contract balance from USDC contract
+      const contractBalance = await usdc.balanceOf(await simpleFund.getAddress());
+      const receiverInitialBalance = await usdc.balanceOf(admin.address);
+
+      // Owner withdraws all USDC to admin address
+      await simpleFund.connect(owner).withdrawAll(await usdc.getAddress(), admin.address);
+
+      // Verify all funds were transferred to receiver
+      const receiverFinalBalance = await usdc.balanceOf(admin.address);
+      const contractFinalBalance = await usdc.balanceOf(await simpleFund.getAddress());
+
+      expect(receiverFinalBalance - receiverInitialBalance).to.equal(contractBalance);
+      expect(contractFinalBalance).to.equal(0);
+      expect(await simpleFund.getFundBalance(await usdc.getAddress())).to.equal(0);
+    });
+
+    it("Should prevent non-owner from calling withdrawAll", async function () {
+      await expect(
+        simpleFund.connect(admin).withdrawAll(await usdc.getAddress(), admin.address)
+      ).to.be.reverted;
+    });
+
+    it("Should reject withdrawAll with invalid stablecoin", async function () {
+      await expect(
+        simpleFund.connect(owner).withdrawAll(admin.address, admin.address)
+      ).to.be.revertedWith("Unsupported stablecoin");
+    });
+
+    it("Should reject withdrawAll with zero receiver address", async function () {
+      await expect(
+        simpleFund.connect(owner).withdrawAll(await usdc.getAddress(), ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid receiver address");
+    });
+
+    it("Should reject withdrawAll when no balance exists", async function () {
+      // Use USDT which has no balance
+      await expect(
+        simpleFund.connect(owner).withdrawAll(await usdt.getAddress(), admin.address)
+      ).to.be.revertedWith("No balance to withdraw");
     });
   });
 
@@ -325,124 +453,6 @@ describe("SimpleFund Contract", function () {
     it("Should return correct total fund value", async function () {
       const totalValue = await simpleFund.getTotalFundValue();
       expect(totalValue).to.equal(DEPOSIT_AMOUNT);
-    });
-  });
-
-  describe("Complete Bill Creation", function () {
-    beforeEach(async function () {
-      // Setup: deposit funds
-      await simpleFund.connect(owner).deposit(DEPOSIT_AMOUNT, await usdc.getAddress());
-    });
-
-    it("should create a complete bill flow in one transaction", async function () {
-      const dueDate = Math.floor(Date.now() / 1000) + 86400;
-      const conditions = {
-        feePercentage: 300, // 3% in basis points
-        upfrontPercentage: 8000,
-        ownerPercentage: 1500
-      };
-
-      const initialBalance = await simpleFund.getFundBalance(await usdc.getAddress());
-      const upfrontAmount = (BILL_AMOUNT * BigInt(conditions.upfrontPercentage)) / 10000n; // 10000 basis points
-
-      // Create complete bill in one transaction
-      const tx = await simpleFund.connect(owner).createCompleteBill(
-        BILL_AMOUNT,
-        dueDate,
-        await usdc.getAddress(),
-        conditions
-      );
-
-      const receipt = await tx.wait();
-      const billId = receipt?.logs[receipt.logs.length - 1]; // Get bill ID from event
-
-      // Verify fund balance decreased by upfront amount
-      const newBalance = await simpleFund.getFundBalance(await usdc.getAddress());
-      expect(newBalance).to.equal(initialBalance - upfrontAmount);
-
-      // Verify bill was created correctly
-      const bill = await factoringContract.getBill(1); // Bill ID should be 1
-      expect(bill.totalAmount).to.equal(BILL_AMOUNT);
-      expect(bill.debtor).to.equal(await simpleFund.getAddress());
-      expect(bill.lender).to.equal(await simpleFund.getAddress());
-      expect(bill.upfrontPaid).to.equal(upfrontAmount);
-      expect(bill.conditions.feePercentage).to.equal(conditions.feePercentage);
-      expect(bill.conditions.upfrontPercentage).to.equal(conditions.upfrontPercentage);
-      expect(bill.conditions.ownerPercentage).to.equal(conditions.ownerPercentage);
-    });
-
-    it("should revert if insufficient fund balance", async function () {
-      const dueDate = Math.floor(Date.now() / 1000) + 86400;
-      // Use a bill amount larger than the deposited amount so upfront exceeds available funds
-      const largeBillAmount = ethers.parseUnits("100000", 6); // Much larger than DEPOSIT_AMOUNT
-      const conditions = {
-        feePercentage: 300,
-        upfrontPercentage: 8000,
-        ownerPercentage: 1500
-      };
-
-      await expect(
-        simpleFund.connect(owner).createCompleteBill(
-          largeBillAmount,
-          dueDate,
-          await usdc.getAddress(),
-          conditions
-        )
-      ).to.be.revertedWith("Insufficient fund balance for upfront payment");
-    });
-
-    it("should revert with invalid conditions", async function () {
-      const dueDate = Math.floor(Date.now() / 1000) + 86400;
-      const invalidConditions = {
-        feePercentage: 15000, // Invalid: > 100%
-        upfrontPercentage: 8000,
-        ownerPercentage: 1500
-      };
-
-      await expect(
-        simpleFund.connect(owner).createCompleteBill(
-          BILL_AMOUNT,
-          dueDate,
-          await usdc.getAddress(),
-          invalidConditions
-        )
-      ).to.be.revertedWith("Fee percentage too high");
-    });
-
-    it("should revert with past due date", async function () {
-      const pastDueDate = Math.floor(Date.now() / 1000) - 86400; // yesterday
-      const conditions = {
-        feePercentage: 300,
-        upfrontPercentage: 8000,
-        ownerPercentage: 1500
-      };
-
-      await expect(
-        simpleFund.connect(owner).createCompleteBill(
-          BILL_AMOUNT,
-          pastDueDate,
-          await usdc.getAddress(),
-          conditions
-        )
-      ).to.be.revertedWith("Due date must be in the future");
-    });
-
-    it("should only allow authorized operators", async function () {
-      const dueDate = Math.floor(Date.now() / 1000) + 86400;
-      const conditions = {
-        feePercentage: 300,
-        upfrontPercentage: 8000,
-        ownerPercentage: 1500
-      };
-
-      await expect(
-        simpleFund.connect(unauthorizedUser).createCompleteBill(
-          BILL_AMOUNT,
-          dueDate,
-          await usdc.getAddress(),
-          conditions
-        )
-      ).to.be.reverted;
     });
   });
 });

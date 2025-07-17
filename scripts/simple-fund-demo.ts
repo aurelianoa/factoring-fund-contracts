@@ -104,7 +104,7 @@ async function main() {
   console.log(`   Total earnings before: $${ethers.formatUnits(balanceBeforePayment, 6)}`);
   console.log(`   Management fees before: $${ethers.formatUnits(feesBeforePayment, 6)}`);
 
-  await simpleFund.connect(debtor).payBillForDebtor(1, debtor.address);
+  await simpleFund.connect(debtor).payBillForDebtor(1);
 
   const balanceAfterPayment = await simpleFund.totalEarnings();
   const feesAfterPayment = await simpleFund.managementFeesCollected();
@@ -136,49 +136,6 @@ async function main() {
   console.log("\n🎉 SimpleFund demo completed successfully!");
   console.log("📊 Summary: SimpleFund operated as a solo investor, automatically");
   console.log("    creating offers, managing bills, and collecting management fees!");
-
-  // SCENARIO 3: Complete Bill Creation (New Feature!)
-  console.log("\n🔥 SCENARIO 3: Complete Bill Creation (New Feature!)");
-  console.log("  Creating bill request + offer + acceptance in one transaction...");
-
-  const completeBillConditions = {
-    feePercentage: 4, // 4% fee
-    upfrontPercentage: 75, // 75% upfront
-    ownerPercentage: 20 // 20% to owner on completion
-  };
-
-  const completeBillAmount = ethers.parseUnits("15000", 6);
-  const completeBillDueDate = Math.floor(Date.now() / 1000) + 86400 * 30; // 30 days
-
-  const createCompleteBillTx = await simpleFund.createCompleteBill(
-    completeBillAmount,
-    completeBillDueDate,
-    await usdc.getAddress(),
-    completeBillConditions
-  );
-  const completeBillReceipt = await createCompleteBillTx.wait();
-
-  console.log(`  ✅ Complete bill created successfully!`);
-  console.log(`     Bill amount: $${ethers.formatUnits(completeBillAmount, 6)}`);
-  console.log(`     Upfront payment: $${ethers.formatUnits((completeBillAmount * BigInt(completeBillConditions.upfrontPercentage)) / BigInt(100), 6)}`);
-  console.log(`     Fee: ${completeBillConditions.feePercentage}%`);
-  console.log(`     Owner share on completion: ${completeBillConditions.ownerPercentage}%`);
-
-  // Check fund balance after complete bill creation
-  const fundBalanceAfterComplete = await simpleFund.getFundBalance(await usdc.getAddress());
-  console.log(`     Fund balance after complete bill: $${ethers.formatUnits(fundBalanceAfterComplete, 6)}`);
-
-  // The bill ID returned from the function is the bill request ID (which is also the bill ID)
-  // Let's try bill ID 2 since we already created one bill
-  try {
-    const completeBill = await factoringContract.getBill(2);
-    console.log(`     Bill ID: ${completeBill.id}`);
-    console.log(`     Bill status: ${completeBill.status === 0n ? "Active" : "Completed"}`);
-    console.log(`     Debtor: ${completeBill.debtor}`);
-    console.log(`     Lender: ${completeBill.lender}`);
-  } catch (error) {
-    console.log(`     Note: Could not retrieve bill details (bill may use different ID)`);
-  }
 }
 
 main()

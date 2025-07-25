@@ -164,9 +164,8 @@ describe("SimpleFund Contract", function () {
 
       // Create offer automatically
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 300,
         upfrontPercentage: 8000,
-        ownerPercentage: 1500
+        rateInterest: 300 // 3% monthly interest rate (in basis points)
       };
       const tx = await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
@@ -182,9 +181,8 @@ describe("SimpleFund Contract", function () {
 
     it("Should reject non-existent bill requests", async function () {
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 3,
-        upfrontPercentage: 80,
-        ownerPercentage: 17
+        upfrontPercentage: 8000,
+        rateInterest: 300
       };
       await expect(
         simpleFund.createOfferForBillRequest(999, await usdc.getAddress(), conditions)
@@ -201,9 +199,8 @@ describe("SimpleFund Contract", function () {
 
       // Create offer
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 300,
         upfrontPercentage: 8000,
-        ownerPercentage: 1500
+        rateInterest: 300
       };
       await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
@@ -244,9 +241,8 @@ describe("SimpleFund Contract", function () {
 
       // Create offer from unauthorizedUser (not the fund)
       const conditions = {
-        feePercentage: 300,
         upfrontPercentage: 8000,
-        ownerPercentage: 1500
+        rateInterest: 300
       };
 
       // Mint tokens and approve for unauthorizedUser
@@ -284,9 +280,8 @@ describe("SimpleFund Contract", function () {
       );
 
       const conditions: FactoringContract.ConditionsStruct = {
-        feePercentage: 300,
         upfrontPercentage: 8000,
-        ownerPercentage: 1500
+        rateInterest: 300
       };
       await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
@@ -301,13 +296,21 @@ describe("SimpleFund Contract", function () {
       const initialTotalEarnings = await simpleFund.totalEarnings();
       const initialManagementFees = await simpleFund.managementFeesCollected();
 
-      // Pay the bill through the fund (this will automatically handle completion)
-      const tx = await simpleFund.connect(debtor).payBillForDebtor(1);
+      // Simulate debtor paying the bill directly to FactoringContract
+      // First mint tokens for the debtor
+      await usdc.mint(debtor.address, bill.totalAmount);
+      await usdc.connect(debtor).approve(await factoringContract.getAddress(), bill.totalAmount);
 
-      await expect(tx)
+      // Debtor pays the bill directly through FactoringContract
+      const tx = await factoringContract.connect(debtor).completeBill(1);
+
+      // Now the fund should handle the completion
+      const handleTx = await simpleFund.handleBillCompletion(1);
+
+      await expect(handleTx)
         .to.emit(simpleFund, "BillCompleted");
 
-      await expect(tx)
+      await expect(handleTx)
         .to.emit(simpleFund, "ManagementFeesCollected");
 
       // Check that earnings and management fees increased
@@ -316,8 +319,18 @@ describe("SimpleFund Contract", function () {
     });
 
     it("Should allow owner to withdraw management fees", async function () {
-      // Complete bill first to generate fees (automatically handles completion)
-      await simpleFund.connect(debtor).payBillForDebtor(1);
+      // Complete bill first to generate fees
+      const bill = await factoringContract.getBill(1);
+
+      // Mint tokens for the debtor to pay the bill
+      await usdc.mint(debtor.address, bill.totalAmount);
+      await usdc.connect(debtor).approve(await factoringContract.getAddress(), bill.totalAmount);
+
+      // Debtor pays the bill directly through FactoringContract
+      await factoringContract.connect(debtor).completeBill(1);
+
+      // Fund handles the completion
+      await simpleFund.handleBillCompletion(1);
 
       const managementFees = await simpleFund.managementFeesCollected();
       const balanceBefore = await usdc.balanceOf(owner.address);
@@ -330,8 +343,18 @@ describe("SimpleFund Contract", function () {
     });
 
     it("Should prevent non-owner from withdrawing management fees", async function () {
-      // Complete bill first to generate fees (automatically handles completion)
-      await simpleFund.connect(debtor).payBillForDebtor(1);
+      // Complete bill first to generate fees  
+      const bill = await factoringContract.getBill(1);
+
+      // Mint tokens for the debtor to pay the bill
+      await usdc.mint(debtor.address, bill.totalAmount);
+      await usdc.connect(debtor).approve(await factoringContract.getAddress(), bill.totalAmount);
+
+      // Debtor pays the bill directly through FactoringContract
+      await factoringContract.connect(debtor).completeBill(1);
+
+      // Fund handles the completion
+      await simpleFund.handleBillCompletion(1);
 
       await expect(
         simpleFund.connect(admin).withdrawManagementFees(await usdc.getAddress())
@@ -343,7 +366,17 @@ describe("SimpleFund Contract", function () {
       await simpleFund.connect(owner).deposit(ethers.parseUnits("5000", 6), await usdc.getAddress());
 
       // Create and complete a bill to generate some earnings
-      await simpleFund.connect(debtor).payBillForDebtor(1);
+      const bill = await factoringContract.getBill(1);
+
+      // Mint tokens for the debtor to pay the bill
+      await usdc.mint(debtor.address, bill.totalAmount);
+      await usdc.connect(debtor).approve(await factoringContract.getAddress(), bill.totalAmount);
+
+      // Debtor pays the bill directly through FactoringContract
+      await factoringContract.connect(debtor).completeBill(1);
+
+      // Fund handles the completion
+      await simpleFund.handleBillCompletion(1);
 
       // Get the actual contract balance from USDC contract
       const contractBalance = await usdc.balanceOf(await simpleFund.getAddress());

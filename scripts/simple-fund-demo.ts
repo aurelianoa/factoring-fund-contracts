@@ -1,8 +1,8 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  console.log("🚀 SimpleFund Demo - Solo Investor Factoring");
-  console.log("===============================================");
+  console.log("🚀 SimpleFund Demo - Solo Investor Factoring with Interest-based Returns");
+  console.log("=======================================================================");
 
   const [owner, admin, debtor] = await ethers.getSigners();
 
@@ -30,11 +30,10 @@ async function main() {
     acceptingDeposits: true
   };
 
-  // Offer config values for demo
+  // Updated conditions for new interest-based model - 100,000 USDC bill example
   const conditions = {
-    feePercentage: 3,
-    upfrontPercentage: 80,
-    ownerPercentage: 17
+    upfrontPercentage: 8000, // 80% upfront (8000 basis points)
+    rateInterest: 300        // 3% monthly interest (300 basis points)
   };
 
   const SimpleFundFactory = await ethers.getContractFactory("SimpleFund");
@@ -46,19 +45,20 @@ async function main() {
   );
   console.log(`   SimpleFund deployed at: ${await simpleFund.getAddress()}`);
 
-  // Setup tokens
+  // Setup tokens - larger amounts for 100k bill example
   console.log("\n💰 Setting up tokens...");
-  const depositAmount = ethers.parseUnits("100000", 6);
-  const billAmount = ethers.parseUnits("25000", 6);
+  const depositAmount = ethers.parseUnits("150000", 6); // 150k for fund
+  const billAmount = ethers.parseUnits("100000", 6);    // 100k bill example
 
   await usdc.mint(owner.address, depositAmount);
   await usdc.mint(debtor.address, billAmount);
 
   await usdc.connect(owner).approve(simpleFund.getAddress(), depositAmount);
   await usdc.connect(debtor).approve(simpleFund.getAddress(), billAmount);
+  await usdc.connect(debtor).approve(factoringContract.getAddress(), billAmount);
 
-  console.log(`   Minted ${ethers.formatUnits(depositAmount, 6)} USDC to owner`);
-  console.log(`   Minted ${ethers.formatUnits(billAmount, 6)} USDC to debtor`);
+  console.log(`   Minted ${ethers.formatUnits(depositAmount, 6)} USDC to owner (fund investment)`);
+  console.log(`   Minted ${ethers.formatUnits(billAmount, 6)} USDC to debtor (for bill payment)`);
 
   // Step 1: Owner deposits funds
   console.log("\n🏦 Step 1: Owner deposits funds into SimpleFund");
@@ -68,7 +68,7 @@ async function main() {
   console.log(`   Total fund value: $${ethers.formatUnits(fundBalance, 6)}`);
 
   // Step 2: Create bill request for debtor
-  console.log("\n📋 Step 2: Create bill request for debtor");
+  console.log("\n📋 Step 2: Create bill request for debtor (100k example)");
   const dueDate = Math.floor(Date.now() / 1000) + 86400; // 24 hours
   const billRequestTx = await simpleFund.connect(owner).createBillRequestForDebtor(
     billAmount,
@@ -83,9 +83,10 @@ async function main() {
   await simpleFund.createOfferForBillRequest(1, await usdc.getAddress(), conditions);
 
   const offer = await factoringContract.getOffer(1);
-  const upfrontAmount = (billAmount * 80n) / 100n; // 80% upfront
+  const upfrontAmount = (billAmount * 8000n) / 10000n; // 80% upfront in basis points
   console.log(`   Offer created with ID: 1`);
-  console.log(`   Upfront amount: $${ethers.formatUnits(upfrontAmount, 6)} (80%)`);
+  console.log(`   Upfront amount: $${ethers.formatUnits(upfrontAmount, 6)} (80% = 8000 basis points)`);
+  console.log(`   Monthly interest rate: ${Number(conditions.rateInterest) / 100}% (${conditions.rateInterest} basis points)`);
 
   // Step 4: Accept offer
   console.log("\n✅ Step 4: SimpleFund accepts its own offer");
@@ -94,23 +95,30 @@ async function main() {
   const bill = await factoringContract.getBill(1);
   console.log(`   Bill created with ID: 1`);
   console.log(`   Lender: ${bill.lender}`);
-  console.log(`   Status: ${bill.status} (should be 1 for Active)`);
+  console.log(`   Status: ${bill.status} (should be 0 for Active)`);
+  console.log(`   Note: Debtor received upfront payment minus 0.4% debtor fee`);
 
-  // Step 5: Debtor pays bill
-  console.log("\n💸 Step 5: Debtor pays bill through SimpleFund");
+  // Step 5: Debtor pays bill through SimpleFund (manual completion for demo)
+  console.log("\n💸 Step 5: Debtor pays bill using FactoringContract directly (demo scenario)");
   const balanceBeforePayment = await simpleFund.totalEarnings();
   const feesBeforePayment = await simpleFund.managementFeesCollected();
 
   console.log(`   Total earnings before: $${ethers.formatUnits(balanceBeforePayment, 6)}`);
   console.log(`   Management fees before: $${ethers.formatUnits(feesBeforePayment, 6)}`);
 
-  await simpleFund.connect(debtor).payBillForDebtor(1);
+  // In this demo, debtor pays directly through FactoringContract
+  // This triggers the SimpleFund's handleBillCompletion
+  await factoringContract.connect(debtor).completeBill(1);
+
+  // Now call handleBillCompletion to update SimpleFund's internal state
+  await simpleFund.handleBillCompletion(1);
 
   const balanceAfterPayment = await simpleFund.totalEarnings();
   const feesAfterPayment = await simpleFund.managementFeesCollected();
 
   console.log(`   Total earnings after: $${ethers.formatUnits(balanceAfterPayment, 6)}`);
   console.log(`   Management fees after: $${ethers.formatUnits(feesAfterPayment, 6)}`);
+  console.log(`   Note: Returns include time-based interest minus lender fee (0.1%)`);
 
   // Step 6: Show final results
   console.log("\n🎯 Step 6: Final Results");
@@ -134,8 +142,12 @@ async function main() {
   }
 
   console.log("\n🎉 SimpleFund demo completed successfully!");
-  console.log("📊 Summary: SimpleFund operated as a solo investor, automatically");
-  console.log("    creating offers, managing bills, and collecting management fees!");
+  console.log("📊 Summary: SimpleFund operated as a solo investor with interest-based returns:");
+  console.log("   ✅ 100,000 USDC bill example");
+  console.log("   ✅ Time-based interest calculations");
+  console.log("   ✅ Automatic fee deductions (debtor 0.4%, lender 0.1%)");
+  console.log("   ✅ Management fee collection (5%)");
+  console.log("   ✅ Basis points calculations (8000 = 80%)");
 }
 
 main()

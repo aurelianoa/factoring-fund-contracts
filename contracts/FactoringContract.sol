@@ -36,21 +36,23 @@ contract FactoringContract is
     IERC20 public immutable USDT;
 
     // Constants
-    uint256 public constant BASIS_POINTS = 10_000; /// 100 * 100
+    uint256 public constant BASIS_POINTS = 10_000; /// 100 * 100 basis points = 100%
+    uint256 public debtorFeePercentage = 40; // 0.4% debtor fee
+    uint256 public lenderFeePercentage = 10; // 0.1% lender fee
+    uint256 public numberofDaysPerMonth = 30;
 
     // Default conditions
+    // @notice this is calculated on 100 basis points
     Conditions public defaultConditions =
         Conditions({
-            feePercentage: 5, // 5% fee
-            upfrontPercentage: 80, // 80% paid upfront
-            ownerPercentage: 15 // 15% to bill owner on completion
+            upfrontPercentage: 8_000, // 80% paid upfront
+            rateInterest: 200 // 2% Interest rate for the bill (monthly 30/360 days)
         });
 
     // Conditions structure for customizable fees per bill
     struct Conditions {
-        uint256 feePercentage; // Platform fee percentage
         uint256 upfrontPercentage; // Percentage paid upfront to bill owner
-        uint256 ownerPercentage; // Percentage paid to bill owner on completion
+        uint256 rateInterest; // Interest rate for the bill (monthly 30/360 days)
     }
 
     // State variables
@@ -80,6 +82,8 @@ contract FactoringContract is
         address lender;
         address stablecoin; // USDC or USDT chosen by lender
         Conditions conditions;
+        uint256 debtorFeePercentage;
+        uint256 lenderFeePercentage;
         uint256 depositedAmount; // Amount deposited by lender
         OfferStatus status;
     }
@@ -99,10 +103,12 @@ contract FactoringContract is
         address stablecoin;
         uint256 totalAmount;
         uint256 upfrontPaid;
-        uint256 remainingAmount;
+        uint256 startDate;
         uint256 dueDate;
         BillStatus status;
         Conditions conditions;
+        uint256 debtorFeePercentage;
+        uint256 lenderFeePercentage;
         uint256 acceptedOfferId;
     }
 
@@ -162,9 +168,8 @@ contract FactoringContract is
     );
     event FeesCollected(uint256 amount, address stablecoin);
     event DefaultConditionsUpdated(
-        uint256 feePercentage,
         uint256 upfrontPercentage,
-        uint256 ownerPercentage
+        uint256 rateInterest
     );
     event BillRequestCancelled(uint256 indexed billRequestId);
     event OfferWithdrawn(uint256 indexed offerId, address indexed lender);
@@ -184,38 +189,47 @@ contract FactoringContract is
 
     /**
      * @dev Set default conditions for new bills (only owner)
-     * @param _feePercentage Platform fee percentage
      * @param _upfrontPercentage Percentage paid upfront to bill owner
-     * @param _ownerPercentage Percentage paid to bill owner on completion
+     * @param _rateInterest Interest rate for the bill
      */
     function setDefaultConditions(
-        uint256 _feePercentage,
         uint256 _upfrontPercentage,
-        uint256 _ownerPercentage
+        uint256 _rateInterest
     ) external onlyOwner {
         require(
-            _feePercentage + _ownerPercentage + _upfrontPercentage <=
-                BASIS_POINTS,
-            "Invalid percentages: sum cannot exceed 100%"
-        );
-        require(
-            _feePercentage > 0 &&
-                _upfrontPercentage > 0 &&
-                _ownerPercentage > 0,
+            _upfrontPercentage > 0,
             "All percentages must be greater than 0"
         );
 
         defaultConditions = Conditions({
-            feePercentage: _feePercentage,
             upfrontPercentage: _upfrontPercentage,
-            ownerPercentage: _ownerPercentage
+            rateInterest: _rateInterest
         });
 
-        emit DefaultConditionsUpdated(
-            _feePercentage,
-            _upfrontPercentage,
-            _ownerPercentage
-        );
+        emit DefaultConditionsUpdated(_upfrontPercentage, _rateInterest);
+    }
+
+    /**
+     * @dev Set debtor fee percentage (only authorized admin)
+     * @param _fee Fee percentage to set
+     */
+    function setDebtorFee(uint256 _fee) external onlyOwner {
+        require(_fee > 0, "Fee must be greater than 0");
+        debtorFeePercentage = _fee;
+    }
+
+    /**
+     * @dev Set lender fee percentage (only authorized admin)
+     * @param _fee Fee percentage to set
+     */
+    function setLenderFee(uint256 _fee) external onlyOwner {
+        require(_fee > 0, "Fee must be greater than 0");
+        lenderFeePercentage = _fee;
+    }
+
+    function setNumberOfDaysPerMonth(uint256 _days) external onlyOwner {
+        require(_days > 0, "Days must be greater than 0");
+        numberofDaysPerMonth = _days;
     }
 
     /**
@@ -279,16 +293,11 @@ contract FactoringContract is
             "Unsupported stablecoin"
         );
         require(
-            conditions.feePercentage +
-                conditions.ownerPercentage +
-                conditions.upfrontPercentage <=
-                BASIS_POINTS,
+            conditions.upfrontPercentage <= BASIS_POINTS,
             "Invalid conditions: sum cannot exceed 100%"
         );
         require(
-            conditions.feePercentage > 0 &&
-                conditions.upfrontPercentage > 0 &&
-                conditions.ownerPercentage > 0,
+            conditions.upfrontPercentage > 0,
             "All condition percentages must be greater than 0"
         );
 
@@ -310,6 +319,8 @@ contract FactoringContract is
             lender: msg.sender,
             stablecoin: stablecoin,
             conditions: conditions,
+            debtorFeePercentage: debtorFeePercentage,
+            lenderFeePercentage: lenderFeePercentage,
             depositedAmount: upfrontAmount,
             status: OfferStatus.Active
         });
@@ -342,15 +353,15 @@ contract FactoringContract is
             ownerOf(offer.billRequestId) == msg.sender,
             "Only NFT owner can accept offers"
         );
-
-        // Transfer upfront amount to debtor using stablecoin from offer
-        IERC20(offer.stablecoin).safeTransfer(
-            msg.sender,
-            offer.depositedAmount
-        );
-
-        // Transfer NFT from debtor to lender
-        _transfer(msg.sender, offer.lender, offer.billRequestId);
+        /// calculate the debtor fee
+        uint256 fees = (offer.debtorFeePercentage * offer.depositedAmount) /
+            BASIS_POINTS;
+        /// register the debtorFee on the pool balance
+        // Keep fees in contract
+        poolBalances[offer.stablecoin] += fees;
+        totalPoolBalance += fees;
+        /// the amount to be transfered must be depositedAmount - fee
+        uint256 amountToTransfer = offer.depositedAmount - fees;
 
         // Update owner bills mapping
         UintArrayManager.removeFromArray(
@@ -370,16 +381,23 @@ contract FactoringContract is
             stablecoin: offer.stablecoin, // Use stablecoin from accepted offer
             totalAmount: billRequest.totalAmount,
             upfrontPaid: offer.depositedAmount,
-            remainingAmount: billRequest.totalAmount - offer.depositedAmount,
+            startDate: block.timestamp,
             dueDate: billRequest.dueDate,
             status: BillStatus.Active,
             conditions: offer.conditions,
+            debtorFeePercentage: offer.debtorFeePercentage,
+            lenderFeePercentage: offer.lenderFeePercentage,
             acceptedOfferId: offerId
         });
 
         // Update statuses
         offer.status = OfferStatus.Accepted;
         billRequest.status = BillRequestStatus.Accepted;
+
+        // Transfer upfront amount to debtor using stablecoin from offer
+        IERC20(offer.stablecoin).safeTransfer(msg.sender, amountToTransfer);
+        // Transfer NFT from debtor to lender
+        _transfer(msg.sender, offer.lender, offer.billRequestId);
 
         // Refund other active offers for this bill request
         _refundOtherOffers(offer.billRequestId, offerId);
@@ -447,25 +465,30 @@ contract FactoringContract is
 
         // Get current NFT owner (should be the lender)
         address currentOwner = ownerOf(billId);
-
-        // Calculate distributions using bill's conditions
-        uint256 ownerPaymentFee = (bill.totalAmount *
-            bill.conditions.ownerPercentage) / BASIS_POINTS; // Percentage to NFT owner based on bill conditions
-        uint256 fees = (bill.totalAmount * bill.conditions.feePercentage) /
+        uint256 fees = (bill.upfrontPaid * bill.lenderFeePercentage) /
             BASIS_POINTS; // Fees based on bill conditions
-        uint256 ownerPayment = ownerPaymentFee + bill.upfrontPaid;
-        uint256 debtorPayment = totalPayment - ownerPayment - fees;
-
-        // Pay current NFT owner the completion percentage + upfront paid
-        IERC20(bill.stablecoin).safeTransfer(currentOwner, ownerPayment);
-        // Pay debtor the remaining amount (if any)
-        if (debtorPayment > 0) {
-            IERC20(bill.stablecoin).safeTransfer(msg.sender, debtorPayment);
-        }
-
         // Keep fees in contract
         poolBalances[bill.stablecoin] += fees;
         totalPoolBalance += fees;
+        /// days passed: get the days passed since startDate until now
+        // Get the number of days passed since startDate until now
+        uint256 daysPassed = (block.timestamp - bill.startDate) / 1 days;
+        // calculate the interest based on the conditions from the startDate until now (in days 30)
+        uint256 interest = (bill.upfrontPaid * bill.conditions.rateInterest * daysPassed) /
+            numberofDaysPerMonth / BASIS_POINTS; // Interest based on bill conditions
+        // Calculate distributions using bill's conditions
+        uint256 ownerPayment = bill.upfrontPaid + interest - fees;
+        uint256 debtorPayment = totalPayment - ownerPayment - fees;
+
+        // Pay current NFT owner the completion percentage + upfront paid
+        if(ownerPayment > totalPayment) {
+            ownerPayment = totalPayment - fees; // Ensure ownerPayment does not exceed totalPayment
+        } 
+        IERC20(bill.stablecoin).safeTransfer(currentOwner, ownerPayment);
+        // Pay debtor the remaining amount (if any)
+        if (debtorPayment > 0) {
+            IERC20(bill.stablecoin).safeTransfer(bill.debtor, debtorPayment);
+        }
 
         // Burn NFT but keep bill history in ownerBills
         _burn(billId);

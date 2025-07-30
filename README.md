@@ -163,6 +163,68 @@ The test suite includes:
 
 ## 🚀 Deployment
 
+The project uses Hardhat Ignition modules organized for different deployment environments:
+
+### Structure
+```
+ignition/
+├── modules/
+│   ├── mainnet/           # Production deployment (real USDC/USDT)
+│   │   ├── FactoringModule.ts
+│   │   ├── SimpleFundModule.ts
+│   │   ├── FundModule.ts
+│   │   └── DeployAllModule.ts
+│   └── testnet/           # Testing deployment (mock tokens)
+│       ├── FactoringModule.ts
+│       ├── SimpleFundModule.ts
+│       ├── FundModule.ts
+│       ├── MockUSDCModule.ts
+│       └── MockUSDTModule.ts
+├── parameters/
+│   ├── mainnet.json       # Real token addresses
+│   ├── mainnet-deploy-all.json
+│   └── testnet.json       # Empty (uses mock tokens)
+└── README.md              # Detailed deployment docs
+```
+
+### Quick Deploy
+
+Use the deployment script:
+```bash
+# Deploy all contracts to testnet
+./scripts/deploy.sh sepolia all
+
+# Deploy specific contract to mainnet (requires confirmation)
+./scripts/deploy.sh mainnet factoring
+
+# Deploy SimpleFund to local network
+./scripts/deploy.sh localhost simplefund
+```
+
+### Manual Deployment
+
+**Testnet (with mock tokens):**
+```bash
+npx hardhat ignition deploy ignition/modules/testnet/FactoringModule.ts --network sepolia --parameters ignition/parameters/testnet.json
+```
+
+**Mainnet (with real USDC/USDT):**
+```bash
+npx hardhat ignition deploy ignition/modules/mainnet/DeployAllModule.ts --network mainnet --parameters ignition/parameters/mainnet-deploy-all.json
+```
+
+### Token Addresses
+
+**Mainnet:**
+- USDC: `0xA0b86a33E6441b8435b662F21e9A1e01e13D52A3`
+- USDT: `0xdAC17F958D2ee523a2206206994597C13D831ec7`
+
+**Testnet:** Mock tokens deployed automatically
+
+See [ignition/README.md](ignition/README.md) for complete deployment documentation.
+
+## 🚀 Legacy Deployment (Deprecated)
+
 The project includes three independent Hardhat Ignition modules for different deployment scenarios:
 
 ### Available Deployment Modules

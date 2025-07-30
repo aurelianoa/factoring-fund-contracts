@@ -1,6 +1,4 @@
 {
-  "MockUSDCModule#MockUSDC": "0x74E0eD2bE201376AF4c09F4C178146C8dEF52867",
-  "MockUSDTModule#MockUSDT": "0x967F7bCF2cA22F2451548011ee4b608f3443bdEc",
-  "FactoringModule#FactoringContract": "0xEdB4D0bd63CCddE2C1b6A0714b4d87E90524eA8b",
-  "SimpleFundModule#SimpleFund": "0xB29197ED50d7Ded636B47eCF47360dD5f13788d3"
+  "FactoringStableCoinParamsModule#FactoringContract": "0x5aF7c79D1D81dd79C2EfFFA7e721c64a993084f3",
+  "SimpleFundStableCoinParamsModule#SimpleFund": "0xf42082356fd36Ed1793DE069B675E1751d992D29"
 }

@@ -49,9 +49,8 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
     // Offer configuration for automatic offer creation
     struct OfferConfig {
-        uint256 feePercentage; // Fee percentage for offers
         uint256 upfrontPercentage; // Upfront percentage for offers
-        uint256 ownerPercentage; // Owner percentage for offers
+        uint256 rateInterest; // Interest rate (in basis points, e.g., 300 = 3% monthly)
         uint256 minBillAmount; // Minimum bill amount to consider
         uint256 maxBillAmount; // Maximum bill amount to consider
         address preferredStablecoin; // Preferred stablecoin for offers (USDC or USDT)
@@ -277,7 +276,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Calculate required upfront amount
         uint256 upfrontAmount = (billRequest.totalAmount *
-            offerConfig.upfrontPercentage) / 100;
+            offerConfig.upfrontPercentage) / factoringContract.BASIS_POINTS();
         require(
             fundBalances[offerConfig.preferredStablecoin] >= upfrontAmount,
             "Insufficient fund balance"
@@ -286,9 +285,8 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Create the offer conditions
         FactoringContract.Conditions memory conditions = FactoringContract
             .Conditions({
-                feePercentage: offerConfig.feePercentage,
                 upfrontPercentage: offerConfig.upfrontPercentage,
-                ownerPercentage: offerConfig.ownerPercentage
+                rateInterest: offerConfig.rateInterest
             });
 
         // Approve the factoring contract to spend our tokens
@@ -322,28 +320,40 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         require(uint256(bill.status) == 1, "Bill not completed"); // 1 = BillStatus.Completed
         require(bill.lender == address(this), "Fund is not the lender");
 
-        // Calculate total return (should include the upfront amount returned + owner percentage)
-        uint256 totalReturn = bill.upfrontPaid +
-            (bill.totalAmount * bill.conditions.ownerPercentage) /
-            100;
+        // With the new interest model, the FactoringContract automatically calculates:
+        // - Interest based on days passed and rateInterest
+        // - Lender fees at completion
+        // - Proper distribution to lender (NFT owner)
 
-        // Update fund balance
-        fundBalances[bill.stablecoin] += totalReturn;
+        // The fund receives: upfrontPaid + interest - lenderFees
+        // We need to track what we actually received vs what we paid out
+        uint256 currentBalance = IERC20(bill.stablecoin).balanceOf(
+            address(this)
+        );
+        uint256 previousBalance = fundBalances[bill.stablecoin];
 
-        // Calculate profit
-        uint256 profit = totalReturn > bill.upfrontPaid
-            ? totalReturn - bill.upfrontPaid
-            : 0;
+        // Calculate net earnings from this bill completion
+        // This represents the interest earned minus any fees paid
+        if (currentBalance > previousBalance) {
+            uint256 grossEarnings = currentBalance - previousBalance;
 
-        // Collect management fee
-        uint256 managementFee = (profit * fundConfig.feePercentage) / 10000;
-        managementFeesCollected += managementFee;
+            // Calculate management fee on the gross earnings
+            uint256 managementFee = (grossEarnings * fundConfig.feePercentage) /
+                10000;
+            uint256 netEarnings = grossEarnings - managementFee;
 
-        // Add to total earnings
-        totalEarnings += (profit - managementFee);
+            // Update tracking
+            fundBalances[bill.stablecoin] = currentBalance - managementFee;
+            totalEarnings += netEarnings;
+            managementFeesCollected += managementFee;
 
-        emit BillCompleted(billId, totalReturn);
-        emit ProfitsDistributed(profit, managementFee);
+            emit ProfitsDistributed(netEarnings, managementFee);
+        } else {
+            // Update balance tracking even if no profit
+            fundBalances[bill.stablecoin] = currentBalance;
+        }
+
+        emit BillCompleted(billId, bill.totalAmount);
     }
 
     /**

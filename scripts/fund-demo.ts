@@ -5,12 +5,13 @@ import { Fund, FactoringContract, MockUSDC, MockUSDT } from "../typechain-types"
  * Fund Contract Demo
  * 
  * This demo showcases the Fund contract which acts as an intermediary
- * between investors/lenders and debtors in the factoring marketplace:
+ * between investors/lenders and debtors in the factoring marketplace with interest-based returns:
  * 
  * 1. **Investment**: Multiple investors pool funds into the Fund
- * 2. **Auto-Lending**: Fund automatically creates offers for bill requests
- * 3. **Profit Sharing**: Profits from successful bills are shared among investors
+ * 2. **Auto-Lending**: Fund automatically creates offers for bill requests with interest rates
+ * 3. **Interest Returns**: Profits from successful bills include time-based interest calculations
  * 4. **Debtor Services**: Fund helps debtors create bill requests and pay bills
+ * 5. **100k Bill Example**: Demonstrates with 100,000 USDC bill using proper basis points
  */
 
 async function main() {
@@ -48,19 +49,18 @@ async function main() {
 
   // Fund configuration
   const fundConfig = {
-    minInvestment: ethers.parseUnits("5000", 6),     // $5,000 minimum
-    maxInvestment: ethers.parseUnits("100000", 6),   // $100,000 maximum
-    targetAmount: ethers.parseUnits("500000", 6),    // $500,000 target
-    feePercentage: 200,                              // 2% management fee
+    minInvestment: ethers.parseUnits("10000", 6),     // $10,000 minimum
+    maxInvestment: ethers.parseUnits("200000", 6),    // $200,000 maximum
+    targetAmount: ethers.parseUnits("1000000", 6),    // $1,000,000 target
+    feePercentage: 200,                               // 2% management fee
     acceptingInvestments: true
   };
 
   const offerConfig = {
-    feePercentage: 4,        // 4% platform fee
-    upfrontPercentage: 82,   // 82% upfront payment
-    ownerPercentage: 14,     // 14% completion payment
-    minBillAmount: ethers.parseUnits("2000", 6),     // $2,000 minimum
-    maxBillAmount: ethers.parseUnits("50000", 6),    // $50,000 maximum
+    upfrontPercentage: 8000,  // 80% upfront payment (8000 basis points)
+    rateInterest: 350,        // 3.5% monthly interest rate (350 basis points)
+    minBillAmount: ethers.parseUnits("10000", 6),     // $10,000 minimum
+    maxBillAmount: ethers.parseUnits("200000", 6),    // $200,000 maximum
     autoOfferEnabled: true,
     preferredStablecoin: await mockUSDC.getAddress()
   };
@@ -82,35 +82,35 @@ async function main() {
   // Mint tokens and setup approvals
   console.log("💰 Setting up tokens and approvals...");
 
-  // Mint tokens to investors
-  await mockUSDC.mint(investor1.address, ethers.parseUnits("150000", 6));
-  await mockUSDC.mint(investor2.address, ethers.parseUnits("100000", 6));
-  await mockUSDC.mint(investor3.address, ethers.parseUnits("75000", 6));
+  // Mint tokens to investors - larger amounts for 100k bill example
+  await mockUSDC.mint(investor1.address, ethers.parseUnits("250000", 6));
+  await mockUSDC.mint(investor2.address, ethers.parseUnits("200000", 6));
+  await mockUSDC.mint(investor3.address, ethers.parseUnits("150000", 6));
 
-  // Mint tokens to debtors for bill payments
-  await mockUSDC.mint(debtor1.address, ethers.parseUnits("30000", 6));
-  await mockUSDC.mint(debtor2.address, ethers.parseUnits("40000", 6));
+  // Mint tokens to debtors for bill payments - 100k bill example
+  await mockUSDC.mint(debtor1.address, ethers.parseUnits("120000", 6));
+  await mockUSDC.mint(debtor2.address, ethers.parseUnits("120000", 6));
 
   // Approve fund to spend tokens
-  await mockUSDC.connect(investor1).approve(fund.getAddress(), ethers.parseUnits("150000", 6));
-  await mockUSDC.connect(investor2).approve(fund.getAddress(), ethers.parseUnits("100000", 6));
-  await mockUSDC.connect(investor3).approve(fund.getAddress(), ethers.parseUnits("75000", 6));
-  await mockUSDC.connect(debtor1).approve(fund.getAddress(), ethers.parseUnits("30000", 6));
-  await mockUSDC.connect(debtor2).approve(fund.getAddress(), ethers.parseUnits("40000", 6));
+  await mockUSDC.connect(investor1).approve(fund.getAddress(), ethers.parseUnits("250000", 6));
+  await mockUSDC.connect(investor2).approve(fund.getAddress(), ethers.parseUnits("200000", 6));
+  await mockUSDC.connect(investor3).approve(fund.getAddress(), ethers.parseUnits("150000", 6));
+  await mockUSDC.connect(debtor1).approve(fund.getAddress(), ethers.parseUnits("120000", 6));
+  await mockUSDC.connect(debtor2).approve(fund.getAddress(), ethers.parseUnits("120000", 6));
 
   console.log("   Tokens minted and approvals set\n");
 
   // Step 1: Investors invest in the fund
   console.log("🏦 Step 1: Investors pool their money into the fund");
 
-  await fund.connect(investor1).invest(ethers.parseUnits("80000", 6), await mockUSDC.getAddress());
-  await fund.connect(investor2).invest(ethers.parseUnits("60000", 6), await mockUSDC.getAddress());
-  await fund.connect(investor3).invest(ethers.parseUnits("40000", 6), await mockUSDC.getAddress());
+  await fund.connect(investor1).invest(ethers.parseUnits("150000", 6), await mockUSDC.getAddress());
+  await fund.connect(investor2).invest(ethers.parseUnits("120000", 6), await mockUSDC.getAddress());
+  await fund.connect(investor3).invest(ethers.parseUnits("100000", 6), await mockUSDC.getAddress());
 
   const totalFundValue = await fund.getTotalFundValue();
-  console.log(`   Investor1 invested: $80,000`);
-  console.log(`   Investor2 invested: $60,000`);
-  console.log(`   Investor3 invested: $40,000`);
+  console.log(`   Investor1 invested: $150,000`);
+  console.log(`   Investor2 invested: $120,000`);
+  console.log(`   Investor3 invested: $100,000`);
   console.log(`   Total fund value: $${ethers.formatUnits(totalFundValue, 6)}\n`);
 
   // Show investor shares
@@ -123,14 +123,14 @@ async function main() {
   console.log(`   Investor2: $${ethers.formatUnits(investor2Value, 6)} (${(Number(investor2Value) * 100 / Number(totalFundValue)).toFixed(1)}%)`);
   console.log(`   Investor3: $${ethers.formatUnits(investor3Value, 6)} (${(Number(investor3Value) * 100 / Number(totalFundValue)).toFixed(1)}%)\n`);
 
-  // Step 2: Create bill requests for debtors
-  console.log("📋 Step 2: Fund creates bill requests for debtors");
+  // Step 2: Create bill requests for debtors (100k bill examples)
+  console.log("📋 Step 2: Fund creates bill requests for debtors (100k examples)");
 
   const dueDate1 = Math.floor(Date.now() / 1000) + (45 * 24 * 60 * 60); // 45 days
   const dueDate2 = Math.floor(Date.now() / 1000) + (60 * 24 * 60 * 60); // 60 days
 
-  const billAmount1 = ethers.parseUnits("25000", 6);
-  const billAmount2 = ethers.parseUnits("35000", 6);
+  const billAmount1 = ethers.parseUnits("100000", 6); // 100k bill example
+  const billAmount2 = ethers.parseUnits("100000", 6); // 100k bill example
 
   await fund.createBillRequestForDebtor(
     billAmount1,
@@ -148,33 +148,40 @@ async function main() {
   console.log(`   Bill request 2: $${ethers.formatUnits(billAmount2, 6)} for debtor2\n`);
 
   // Step 3: Fund automatically creates offers
-  console.log("🤖 Step 3: Fund automatically creates competitive offers");
+  console.log("🤖 Step 3: Fund automatically creates competitive offers with interest rates");
 
   await fund.createOfferForBillRequest(1);
   await fund.createOfferForBillRequest(2);
 
-  const upfront1 = (billAmount1 * 82n) / 100n;
-  const upfront2 = (billAmount2 * 82n) / 100n;
+  const upfront1 = (billAmount1 * 8000n) / 10000n; // 80% upfront in basis points
+  const upfront2 = (billAmount2 * 8000n) / 10000n; // 80% upfront in basis points
 
-  console.log(`   Offer 1: $${ethers.formatUnits(upfront1, 6)} upfront (82%) for bill 1`);
-  console.log(`   Offer 2: $${ethers.formatUnits(upfront2, 6)} upfront (82%) for bill 2`);
+  console.log(`   Offer 1: $${ethers.formatUnits(upfront1, 6)} upfront (80% = 8000 basis points) for bill 1`);
+  console.log(`   Offer 2: $${ethers.formatUnits(upfront2, 6)} upfront (80% = 8000 basis points) for bill 2`);
+  console.log(`   Monthly interest rate: ${Number(offerConfig.rateInterest) / 100}% (${offerConfig.rateInterest} basis points)`);
 
   const fundBalanceAfterOffers = await fund.getFundBalance(await mockUSDC.getAddress());
   console.log(`   Remaining fund balance: $${ethers.formatUnits(fundBalanceAfterOffers, 6)}\n`);
 
   // Step 4: Fund accepts its own offers (since it owns the NFTs)
-  console.log("✅ Step 4: Fund accepts offers and disburses upfront payments");
+  console.log("✅ Step 4: Fund accepts offers and disburses upfront payments (minus debtor fees)");
 
   // Fund accepts its own offers
   await fund.acceptOfferForOwnedBill(1);
   await fund.acceptOfferForOwnedBill(2);
 
-  console.log(`   Debtor1 received upfront: $${ethers.formatUnits(upfront1, 6)}`);
-  console.log(`   Debtor2 received upfront: $${ethers.formatUnits(upfront2, 6)}`);
+  // Calculate net amounts after debtor fees (0.4%)
+  const debtorFee1 = (upfront1 * 40n) / 10000n;
+  const debtorFee2 = (upfront2 * 40n) / 10000n;
+  const netUpfront1 = upfront1 - debtorFee1;
+  const netUpfront2 = upfront2 - debtorFee2;
+
+  console.log(`   Debtor1 received (net): $${ethers.formatUnits(netUpfront1, 6)} (after 0.4% debtor fee)`);
+  console.log(`   Debtor2 received (net): $${ethers.formatUnits(netUpfront2, 6)} (after 0.4% debtor fee)`);
   console.log(`   Bills created with Fund as lender\n`);
 
   // Step 5: Debtors pay their bills
-  console.log("💸 Step 5: Debtors pay their bills in full");
+  console.log("💸 Step 5: Debtors pay their bills in full (interest calculated automatically)");
 
   // Debtor1 pays through fund
   await fund.connect(debtor1).payBillForDebtor(1);
@@ -185,7 +192,8 @@ async function main() {
   await fund.handleBillCompletion(2);
 
   console.log(`   Debtor1 paid: $${ethers.formatUnits(billAmount1, 6)}`);
-  console.log(`   Debtor2 paid: $${ethers.formatUnits(billAmount2, 6)}\n`);
+  console.log(`   Debtor2 paid: $${ethers.formatUnits(billAmount2, 6)}`);
+  console.log(`   Note: Fund received returns including time-based interest minus lender fees (0.1%)\n`);
 
   // Step 6: Calculate and display final results
   console.log("🎯 Step 6: Final Results and Profit Distribution");
@@ -199,7 +207,8 @@ async function main() {
   console.log(`   Final fund value: $${ethers.formatUnits(finalFundValue, 6)}`);
   console.log(`   Total profit: $${ethers.formatUnits(totalProfit, 6)}`);
   console.log(`   Investor earnings: $${ethers.formatUnits(totalEarnings, 6)}`);
-  console.log(`   Management fees: $${ethers.formatUnits(managementFees, 6)}\n`);
+  console.log(`   Management fees: $${ethers.formatUnits(managementFees, 6)}`);
+  console.log(`   Note: Profits include time-based interest calculations\n`);
 
   // Show final investor values
   console.log("💎 Final investor portfolio values:");
@@ -231,9 +240,12 @@ async function main() {
   console.log(`   Average ROI: ${avgROI.toFixed(2)}%\n`);
 
   console.log("🎉 Fund demo completed successfully!");
-  console.log("📊 Summary: The fund successfully pooled investor capital,");
-  console.log("    automatically created competitive offers, and distributed");
-  console.log("    profits proportionally among investors!");
+  console.log("📊 Summary: Fund with interest-based returns demonstrated:");
+  console.log("   ✅ Multiple 100,000 USDC bill examples");
+  console.log("   ✅ Time-based interest calculations (3.5% monthly)");
+  console.log("   ✅ Automatic fee deductions (debtor 0.4%, lender 0.1%)");
+  console.log("   ✅ Proportional profit distribution among investors");
+  console.log("   ✅ Basis points calculations (8000 = 80%)");
 }
 
 main()

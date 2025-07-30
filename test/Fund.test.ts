@@ -50,9 +50,8 @@ describe("Fund Contract", function () {
     };
 
     const offerConfig = {
-      feePercentage: 3,
-      upfrontPercentage: 80,
-      ownerPercentage: 17,
+      upfrontPercentage: 8000, // 80% in basis points 
+      rateInterest: 300, // 3% monthly interest rate (in basis points)
       minBillAmount: ethers.parseUnits("1000", 6),
       maxBillAmount: ethers.parseUnits("20000", 6),
       autoOfferEnabled: true,
@@ -178,7 +177,7 @@ describe("Fund Contract", function () {
 
       await expect(tx)
         .to.emit(fund, "OfferCreatedAutomatically")
-        .withArgs(1, 1, BILL_AMOUNT * 80n / 100n); // 80% upfront
+        .withArgs(1, 1, BILL_AMOUNT * 8000n / 10000n); // 80% upfront (8000 basis points)
 
       // Check that offer was created
       const offer = await factoringContract.getOffer(1);
@@ -226,8 +225,13 @@ describe("Fund Contract", function () {
       // Get bill details
       const bill = await factoringContract.getBill(1);
 
-      // Pay the bill through the fund
-      await fund.connect(debtor).payBillForDebtor(1);
+      // Simulate debtor paying the bill directly to FactoringContract
+      // First mint tokens for the debtor
+      await usdc.mint(debtor.address, bill.totalAmount);
+      await usdc.connect(debtor).approve(await factoringContract.getAddress(), bill.totalAmount);
+
+      // Debtor pays the bill directly through FactoringContract
+      await factoringContract.connect(debtor).completeBill(1);
 
       // Handle completion
       const tx = await fund.handleBillCompletion(1);
@@ -263,9 +267,8 @@ describe("Fund Contract", function () {
 
     it("Should allow admin to update offer config", async function () {
       const newOfferConfig = {
-        feePercentage: 4,
-        upfrontPercentage: 85,
-        ownerPercentage: 11,
+        upfrontPercentage: 8500, // 85% in basis points
+        rateInterest: 400, // 4% monthly interest rate (in basis points)
         minBillAmount: ethers.parseUnits("2000", 6),
         maxBillAmount: ethers.parseUnits("15000", 6),
         autoOfferEnabled: false,
@@ -276,7 +279,7 @@ describe("Fund Contract", function () {
       await expect(tx).to.emit(fund, "OfferConfigUpdated");
 
       const updatedConfig = await fund.offerConfig();
-      expect(updatedConfig.feePercentage).to.equal(newOfferConfig.feePercentage);
+      expect(updatedConfig.rateInterest).to.equal(newOfferConfig.rateInterest);
       expect(updatedConfig.autoOfferEnabled).to.equal(newOfferConfig.autoOfferEnabled);
     });
 

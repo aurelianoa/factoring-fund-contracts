@@ -18,6 +18,8 @@ import {FactoringContract} from "./FactoringContract.sol";
  * - Only authorized wallets can deposit/withdraw funds
  * - Automated bill request and offer creation
  * - Management fees for the contract
+ * - Withdrawal functions for upfront payments and debtor payments
+ * - Withdrawal tracking to prevent double withdrawals
  * - Integration with FactoringContract for seamless operations
  */
 contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
@@ -39,10 +41,12 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     // State variables
     FundConfig public fundConfig;
 
-    uint256 public totalEarnings;
-    uint256 public managementFeesCollected;
-
+    mapping(uint256 => bool) public activeBillRequests; // Bill request ID => active
     mapping(uint256 => uint256) public billRequestToOffer; // Bill request ID => offer ID
+
+    // Withdrawal tracking
+    mapping(uint256 => bool) public upfrontPaymentWithdrawn; // Bill ID => withdrawn
+    mapping(uint256 => bool) public debtorPaymentWithdrawn; // Bill ID => withdrawn
 
     // Events
     event FundsDeposited(
@@ -60,7 +64,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 indexed offerId,
         uint256 amount
     );
-    event ManagementFeesCollected(uint256 amount);
+
     event BillRequestFunded(
         uint256 indexed billRequestId,
         address indexed debtor,
@@ -72,6 +76,16 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     event OfferWithdrawn(
         uint256 indexed offerId,
         uint256 indexed billRequestId,
+        uint256 amount
+    );
+    event UpfrontPaymentWithdrawn(
+        uint256 indexed billId,
+        address indexed receiver,
+        uint256 amount
+    );
+    event DebtorPaymentWithdrawn(
+        uint256 indexed billId,
+        address indexed receiver,
         uint256 amount
     );
 
@@ -128,7 +142,10 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
-        require(IERC20(token).balanceOf(address(this)) >= amount, "Insufficient balance");
+        require(
+            IERC20(token).balanceOf(address(this)) >= amount,
+            "Insufficient balance"
+        );
 
         // Transfer tokens to caller
         IERC20(token).safeTransfer(msg.sender, amount);
@@ -274,8 +291,8 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         );
         // Check if this contract does have the balance in the bill stablecoin
         require(
-            IERC20(bill.stablecoin).balanceOf(address(this)) >= bill.totalAmount,
-            "Insufficient balance in stablecoin"
+            getFundBalance(bill.stablecoin) >= bill.totalAmount,
+            "Insufficient fund balance"
         );
         // Approve FactoringContract to spend our tokens for bill completion
         IERC20(bill.stablecoin).approve(
@@ -285,47 +302,6 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Complete the bill payment
         factoringContract.completeBill(billId);
-
-        // Automatically handle completion and management fees
-        _handleBillCompletion(billId);
-    }
-
-    /**
-     * @dev Handle bill completion and collect management fees (internal)
-     * @param billId ID of the completed bill
-     */
-    function _handleBillCompletion(uint256 billId) internal {
-        // Get updated bill details after completion
-        FactoringContract.Bill memory bill = factoringContract.getBill(billId);
-        require(bill.id != 0, "Bill does not exist");
-        require(uint256(bill.status) == 1, "Bill not completed"); // 1 = BillStatus.Completed
-
-        // Calculate total return (owner's share from the bill completion)
-        uint256 totalReturn = (bill.totalAmount *
-            bill.conditions.ownerPercentage) / factoringContract.BASIS_POINTS();
-
-        // Calculate management fee
-        uint256 managementFee = (totalReturn *
-            fundConfig.managementFeePercentage) /
-            factoringContract.BASIS_POINTS(); // basis points
-        uint256 netReturn = totalReturn - managementFee;
-
-        // Update fund balances
-        totalEarnings += netReturn;
-        managementFeesCollected += managementFee;
-
-        emit BillCompleted(billId, totalReturn);
-        emit ManagementFeesCollected(managementFee);
-    }
-
-    /**
-     * @dev Handle bill completion and collect management fees (public)
-     * @param billId ID of the completed bill
-     */
-    function handleBillCompletion(
-        uint256 billId
-    ) external onlyAuthorizedAdmin nonReentrant {
-        _handleBillCompletion(billId);
     }
 
     /**
@@ -339,10 +315,12 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
-        require(managementFeesCollected > 0, "No fees to withdraw");
 
-        uint256 feesToWithdraw = managementFeesCollected;
-        managementFeesCollected = 0;
+        /// calculate the fundConfig fees to transfer
+        uint256 feesToWithdraw = (getFundBalance(token) *
+            fundConfig.managementFeePercentage) /
+            factoringContract.BASIS_POINTS();
+        require(feesToWithdraw > 0, "No fees to withdraw");
 
         IERC20(token).safeTransfer(msg.sender, feesToWithdraw);
     }
@@ -370,6 +348,118 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         IERC20(stablecoin).safeTransfer(receiver, actualBalance);
 
         emit FundsWithdrawn(receiver, actualBalance, stablecoin);
+    }
+
+    /**
+     * @dev Withdraw upfront payment received when an offer is accepted (only owner/admin)
+     * @param billId ID of the bill to withdraw upfront payment for
+     * @param receiver Address to receive the withdrawn funds
+     */
+    function withdrawUpfrontPayment(
+        uint256 billId,
+        address receiver
+    ) external onlyAuthorizedAdmin nonReentrant {
+        require(receiver != address(0), "Invalid receiver address");
+        require(
+            !upfrontPaymentWithdrawn[billId],
+            "Upfront payment already withdrawn"
+        );
+
+        // Get bill details
+        FactoringContract.Bill memory bill = factoringContract.getBill(billId);
+        require(bill.id != 0, "Bill does not exist");
+        require(bill.debtor == address(this), "Fund is not the debtor");
+        require(
+            uint256(bill.status) == 0,
+            "Bill not active" // 0 = BillStatus.Active
+        );
+
+        // Calculate upfront payment amount after debtor fees
+        uint256 debtorFee = (bill.upfrontPaid * bill.debtorFeePercentage) /
+            factoringContract.BASIS_POINTS();
+        uint256 upfrontPaymentAfterFees = bill.upfrontPaid - debtorFee;
+
+        // Verify we have sufficient balance
+        require(
+            IERC20(bill.stablecoin).balanceOf(address(this)) >=
+                upfrontPaymentAfterFees,
+            "Insufficient balance for upfront payment withdrawal"
+        );
+
+        // Mark as withdrawn
+        upfrontPaymentWithdrawn[billId] = true;
+
+        // Transfer the upfront payment after fees to receiver
+        IERC20(bill.stablecoin).safeTransfer(receiver, upfrontPaymentAfterFees);
+
+        emit UpfrontPaymentWithdrawn(billId, receiver, upfrontPaymentAfterFees);
+        emit FundsWithdrawn(receiver, upfrontPaymentAfterFees, bill.stablecoin);
+    }
+
+    /**
+     * @dev Withdraw debtor payment received when a bill is completed (only owner/admin)
+     * @param billId ID of the completed bill to withdraw debtor payment for
+     * @param receiver Address to receive the withdrawn funds
+     */
+    function withdrawDebtorPayment(
+        uint256 billId,
+        address receiver
+    ) external onlyAuthorizedAdmin nonReentrant {
+        require(receiver != address(0), "Invalid receiver address");
+        require(
+            !debtorPaymentWithdrawn[billId],
+            "Debtor payment already withdrawn"
+        );
+
+        // Get bill details
+        FactoringContract.Bill memory bill = factoringContract.getBill(billId);
+        require(bill.id != 0, "Bill does not exist");
+        require(bill.debtor == address(this), "Fund is not the debtor");
+        require(
+            uint256(bill.status) == 1,
+            "Bill not completed" // 1 = BillStatus.Completed
+        );
+
+        // Calculate debtor payment using the same logic as FactoringContract.completeBill
+        uint256 lenderFees = (bill.upfrontPaid * bill.lenderFeePercentage) /
+            factoringContract.BASIS_POINTS();
+
+        // Calculate interest based on days passed
+        uint256 daysPassed = (block.timestamp - bill.startDate) / 1 days;
+        uint256 interest = (bill.upfrontPaid *
+            bill.conditions.rateInterest *
+            daysPassed) /
+            factoringContract.numberofDaysPerMonth() /
+            factoringContract.BASIS_POINTS();
+
+        // Calculate owner payment (lender receives this)
+        uint256 ownerPayment = bill.upfrontPaid + interest - lenderFees;
+
+        // Ensure ownerPayment does not exceed totalPayment (same logic as FactoringContract)
+        if (ownerPayment > bill.totalAmount) {
+            ownerPayment = bill.totalAmount - lenderFees;
+        }
+
+        // Calculate debtor payment (what debtor gets back)
+        uint256 debtorPayment = bill.totalAmount - ownerPayment - lenderFees;
+
+        // Only proceed if there's a debtor payment to withdraw
+        require(debtorPayment > 0, "No debtor payment available");
+
+        // Verify we have sufficient balance
+        require(
+            IERC20(bill.stablecoin).balanceOf(address(this)) >= debtorPayment,
+            "Insufficient balance for debtor payment withdrawal"
+        );
+
+        // Mark as withdrawn
+        debtorPaymentWithdrawn[billId] = true;
+
+        // Transfer the debtor payment to receiver
+        IERC20(bill.stablecoin).safeTransfer(receiver, debtorPayment);
+
+        emit DebtorPaymentWithdrawn(billId, receiver, debtorPayment);
+        emit FundsWithdrawn(receiver, debtorPayment, bill.stablecoin);
     }
 
     /**

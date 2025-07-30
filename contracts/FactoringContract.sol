@@ -478,7 +478,7 @@ contract FactoringContract is
             numberofDaysPerMonth / BASIS_POINTS; // Interest based on bill conditions
         // Calculate distributions using bill's conditions
         uint256 ownerPayment = bill.upfrontPaid + interest - fees;
-        uint256 debtorPayment = totalPayment - ownerPayment;
+        uint256 debtorPayment = totalPayment - ownerPayment - fees;
 
         // Pay current NFT owner the completion percentage + upfront paid
         if(ownerPayment > totalPayment) {

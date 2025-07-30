@@ -221,7 +221,7 @@ describe("SimpleFund Withdrawal Tracking", function () {
       const daysPassed = 0n; // Immediate completion
       const interest = (bill.upfrontPaid * bill.conditions.rateInterest * daysPassed) / 30n / 10000n;
       const ownerPayment = bill.upfrontPaid + interest - lenderFees;
-      const expectedDebtorPayment = totalAmount - ownerPayment;
+      const expectedDebtorPayment = totalAmount - ownerPayment - lenderFees;
 
       await expect(
         simpleFund

@@ -150,7 +150,7 @@ describe("SimpleFund Withdrawal Functions", function () {
       const daysPassed = 15n; // 15 days
       const interest = (bill.upfrontPaid * BigInt(rateInterest) * daysPassed) / 30n / 10000n;
       const ownerPayment = bill.upfrontPaid + interest - lenderFees;
-      const expectedDebtorPayment = bill.totalAmount - ownerPayment;
+      const expectedDebtorPayment = bill.totalAmount - ownerPayment - lenderFees;
 
       // Admin withdraws the debtor payment
       const initialBalance = await usdc.balanceOf(deployer.address);

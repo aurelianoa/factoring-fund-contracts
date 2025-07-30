@@ -441,7 +441,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         }
 
         // Calculate debtor payment (what debtor gets back)
-        uint256 debtorPayment = bill.totalAmount - ownerPayment;
+        uint256 debtorPayment = bill.totalAmount - ownerPayment - lenderFees;
 
         // Only proceed if there's a debtor payment to withdraw
         require(debtorPayment > 0, "No debtor payment available");

@@ -98,47 +98,45 @@ async function main() {
   console.log(`   Status: ${bill.status} (should be 0 for Active)`);
   console.log(`   Note: Debtor received upfront payment minus 0.4% debtor fee`);
 
-  // Step 5: Debtor pays bill through SimpleFund (manual completion for demo)
-  console.log("\n💸 Step 5: Debtor pays bill using FactoringContract directly (demo scenario)");
-  const balanceBeforePayment = await simpleFund.totalEarnings();
-  const feesBeforePayment = await simpleFund.managementFeesCollected();
+  // Step 5: Debtor pays bill through SimpleFund
+  console.log("\n💸 Step 5: SimpleFund pays bill on behalf of debtor");
 
-  console.log(`   Total earnings before: $${ethers.formatUnits(balanceBeforePayment, 6)}`);
-  console.log(`   Management fees before: $${ethers.formatUnits(feesBeforePayment, 6)}`);
+  // First, show balances before payment
+  const fundBalanceBefore = await simpleFund.getFundBalance(await usdc.getAddress());
+  console.log(`   Fund balance before payment: $${ethers.formatUnits(fundBalanceBefore, 6)}`);
 
-  // In this demo, debtor pays directly through FactoringContract
-  // This triggers the SimpleFund's handleBillCompletion
-  await factoringContract.connect(debtor).completeBill(1);
+  // Mint additional tokens to SimpleFund for bill payment
+  await usdc.mint(await simpleFund.getAddress(), billAmount);
+  console.log(`   Minted ${ethers.formatUnits(billAmount, 6)} USDC to SimpleFund for bill payment`);
 
-  // Now call handleBillCompletion to update SimpleFund's internal state
-  await simpleFund.handleBillCompletion(1);
+  // SimpleFund pays the bill on behalf of debtor
+  await simpleFund.payBillForDebtor(1);
 
-  const balanceAfterPayment = await simpleFund.totalEarnings();
-  const feesAfterPayment = await simpleFund.managementFeesCollected();
+  const fundBalanceAfter = await simpleFund.getFundBalance(await usdc.getAddress());
+  console.log(`   Fund balance after payment: $${ethers.formatUnits(fundBalanceAfter, 6)}`);
+  console.log(`   Note: SimpleFund received debtor payment after completing bill`);
 
-  console.log(`   Total earnings after: $${ethers.formatUnits(balanceAfterPayment, 6)}`);
-  console.log(`   Management fees after: $${ethers.formatUnits(feesAfterPayment, 6)}`);
-  console.log(`   Note: Returns include time-based interest minus lender fee (0.1%)`);
-
-  // Step 6: Show final results
-  console.log("\n🎯 Step 6: Final Results");
+  // Step 6: Show final results and calculate management fees
+  console.log("\n🎯 Step 6: Final Results and Management Fees");
   const finalFundValue = await simpleFund.getTotalFundValue();
-  const totalEarnings = await simpleFund.totalEarnings();
-  const managementFees = await simpleFund.managementFeesCollected();
+  const currentBalance = await simpleFund.getFundBalance(await usdc.getAddress());
 
-  console.log(`   Initial fund value: $${ethers.formatUnits(depositAmount, 6)}`);
+  // Calculate potential management fees (5% of current balance)
+  const potentialFees = (currentBalance * 500n) / 10000n; // 5% in basis points
+
+  console.log(`   Initial fund deposit: $${ethers.formatUnits(depositAmount, 6)}`);
   console.log(`   Final fund value: $${ethers.formatUnits(finalFundValue, 6)}`);
-  console.log(`   Total earnings: $${ethers.formatUnits(totalEarnings, 6)}`);
-  console.log(`   Management fees collected: $${ethers.formatUnits(managementFees, 6)}`);
-  console.log(`   Net return: $${ethers.formatUnits(finalFundValue - depositAmount, 6)}`);
+  console.log(`   Current balance: $${ethers.formatUnits(currentBalance, 6)}`);
+  console.log(`   Potential management fees (5%): $${ethers.formatUnits(potentialFees, 6)}`);
+  console.log(`   Net fund value after fees: $${ethers.formatUnits(finalFundValue - potentialFees, 6)}`);
 
-  // Owner can withdraw management fees
-  if (managementFees > 0) {
+  // Step 7: Owner can withdraw management fees
+  if (potentialFees > 0) {
     console.log("\n💰 Step 7: Owner withdraws management fees");
     const ownerBalanceBefore = await usdc.balanceOf(owner.address);
     await simpleFund.connect(owner).withdrawManagementFees(await usdc.getAddress());
     const ownerBalanceAfter = await usdc.balanceOf(owner.address);
-    console.log(`   Owner received: $${ethers.formatUnits(ownerBalanceAfter - ownerBalanceBefore, 6)}`);
+    console.log(`   Management fees withdrawn: $${ethers.formatUnits(ownerBalanceAfter - ownerBalanceBefore, 6)}`);
   }
 
   console.log("\n🎉 SimpleFund demo completed successfully!");

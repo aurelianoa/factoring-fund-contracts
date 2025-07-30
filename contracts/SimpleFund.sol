@@ -19,6 +19,7 @@ import {FactoringContract} from "./FactoringContract.sol";
  * - Automated bill request and offer creation
  * - Management fees for the contract
  * - Withdrawal functions for upfront payments and debtor payments
+ * - Withdrawal tracking to prevent double withdrawals
  * - Integration with FactoringContract for seamless operations
  */
 contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
@@ -40,13 +41,12 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     // State variables
     FundConfig public fundConfig;
 
-    uint256 public totalFundValue;
-    uint256 public totalEarnings;
-    uint256 public managementFeesCollected;
-
-    mapping(address => uint256) public fundBalances; // Token => balance
     mapping(uint256 => bool) public activeBillRequests; // Bill request ID => active
     mapping(uint256 => uint256) public billRequestToOffer; // Bill request ID => offer ID
+
+    // Withdrawal tracking
+    mapping(uint256 => bool) public upfrontPaymentWithdrawn; // Bill ID => withdrawn
+    mapping(uint256 => bool) public debtorPaymentWithdrawn; // Bill ID => withdrawn
 
     // Events
     event FundsDeposited(
@@ -64,7 +64,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         uint256 indexed offerId,
         uint256 amount
     );
-    event ManagementFeesCollected(uint256 amount);
+
     event BillRequestFunded(
         uint256 indexed billRequestId,
         address indexed debtor,
@@ -76,6 +76,16 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     event OfferWithdrawn(
         uint256 indexed offerId,
         uint256 indexed billRequestId,
+        uint256 amount
+    );
+    event UpfrontPaymentWithdrawn(
+        uint256 indexed billId,
+        address indexed receiver,
+        uint256 amount
+    );
+    event DebtorPaymentWithdrawn(
+        uint256 indexed billId,
+        address indexed receiver,
         uint256 amount
     );
 
@@ -281,14 +291,9 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         );
         // Check if this contract does have the balance in the bill stablecoin
         require(
-            fundBalances[bill.stablecoin] >= bill.totalAmount,
+            getFundBalance(bill.stablecoin) >= bill.totalAmount,
             "Insufficient fund balance"
         );
-
-        // Update fund balances before payment
-        fundBalances[bill.stablecoin] -= bill.totalAmount;
-        totalFundValue -= bill.totalAmount;
-
         // Approve FactoringContract to spend our tokens for bill completion
         IERC20(bill.stablecoin).approve(
             address(factoringContract),
@@ -297,67 +302,6 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
 
         // Complete the bill payment
         factoringContract.completeBill(billId);
-
-        // Automatically handle completion and management fees
-        _handleBillCompletion(billId);
-    }
-
-    /**
-     * @dev Handle bill completion and collect management fees (internal)
-     * @param billId ID of the completed bill
-     */
-    function _handleBillCompletion(uint256 billId) internal {
-        // Get updated bill details after completion
-        FactoringContract.Bill memory bill = factoringContract.getBill(billId);
-        require(bill.id != 0, "Bill does not exist");
-        require(uint256(bill.status) == 1, "Bill not completed"); // 1 = BillStatus.Completed
-
-        // With the new interest model, the FactoringContract automatically calculates:
-        // - Interest based on days passed and rateInterest
-        // - Lender fees at completion
-        // - Proper distribution to lender (NFT owner)
-
-        // The fund receives: upfrontPaid + interest - lenderFees
-        // We need to track what we actually received vs what we paid out
-        uint256 currentBalance = IERC20(bill.stablecoin).balanceOf(
-            address(this)
-        );
-        uint256 previousBalance = fundBalances[bill.stablecoin];
-
-        // Calculate net earnings from this bill completion
-        // This represents the interest earned minus any fees paid
-        if (currentBalance > previousBalance) {
-            uint256 grossEarnings = currentBalance - previousBalance;
-
-            // Calculate management fee on the gross earnings
-            uint256 managementFee = (grossEarnings *
-                fundConfig.managementFeePercentage) /
-                factoringContract.BASIS_POINTS();
-            uint256 netEarnings = grossEarnings - managementFee;
-
-            // Update tracking
-            fundBalances[bill.stablecoin] = currentBalance - managementFee;
-            totalFundValue = totalFundValue + netEarnings; // Add net earnings to total value
-            totalEarnings += netEarnings;
-            managementFeesCollected += managementFee;
-
-            emit ManagementFeesCollected(managementFee);
-        } else {
-            // Update balance tracking even if no profit
-            fundBalances[bill.stablecoin] = currentBalance;
-        }
-
-        emit BillCompleted(billId, bill.totalAmount);
-    }
-
-    /**
-     * @dev Handle bill completion and collect management fees (public)
-     * @param billId ID of the completed bill
-     */
-    function handleBillCompletion(
-        uint256 billId
-    ) external onlyAuthorizedAdmin nonReentrant {
-        _handleBillCompletion(billId);
     }
 
     /**
@@ -371,10 +315,12 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
-        require(managementFeesCollected > 0, "No fees to withdraw");
 
-        uint256 feesToWithdraw = managementFeesCollected;
-        managementFeesCollected = 0;
+        /// calculate the fundConfig fees to transfer
+        uint256 feesToWithdraw = (getFundBalance(token) *
+            fundConfig.managementFeePercentage) /
+            factoringContract.BASIS_POINTS();
+        require(feesToWithdraw > 0, "No fees to withdraw");
 
         IERC20(token).safeTransfer(msg.sender, feesToWithdraw);
     }
@@ -414,6 +360,10 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         address receiver
     ) external onlyAuthorizedAdmin nonReentrant {
         require(receiver != address(0), "Invalid receiver address");
+        require(
+            !upfrontPaymentWithdrawn[billId],
+            "Upfront payment already withdrawn"
+        );
 
         // Get bill details
         FactoringContract.Bill memory bill = factoringContract.getBill(billId);
@@ -436,9 +386,13 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             "Insufficient balance for upfront payment withdrawal"
         );
 
+        // Mark as withdrawn
+        upfrontPaymentWithdrawn[billId] = true;
+
         // Transfer the upfront payment after fees to receiver
         IERC20(bill.stablecoin).safeTransfer(receiver, upfrontPaymentAfterFees);
 
+        emit UpfrontPaymentWithdrawn(billId, receiver, upfrontPaymentAfterFees);
         emit FundsWithdrawn(receiver, upfrontPaymentAfterFees, bill.stablecoin);
     }
 
@@ -452,6 +406,10 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         address receiver
     ) external onlyAuthorizedAdmin nonReentrant {
         require(receiver != address(0), "Invalid receiver address");
+        require(
+            !debtorPaymentWithdrawn[billId],
+            "Debtor payment already withdrawn"
+        );
 
         // Get bill details
         FactoringContract.Bill memory bill = factoringContract.getBill(billId);
@@ -494,9 +452,13 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             "Insufficient balance for debtor payment withdrawal"
         );
 
+        // Mark as withdrawn
+        debtorPaymentWithdrawn[billId] = true;
+
         // Transfer the debtor payment to receiver
         IERC20(bill.stablecoin).safeTransfer(receiver, debtorPayment);
 
+        emit DebtorPaymentWithdrawn(billId, receiver, debtorPayment);
         emit FundsWithdrawn(receiver, debtorPayment, bill.stablecoin);
     }
 

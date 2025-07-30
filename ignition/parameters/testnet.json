@@ -1,5 +1,14 @@
 {
-  "FactoringModule": {},
-  "SimpleFundModule": {},
-  "FundModule": {}
+  "FactoringStableCoinParamsModule": {
+    "USDC": "0x9eB0faA2Cd6f989b513C891E8A5E8c0CC13C9335",
+    "USDT": "0x05a9898438809cB6Bb7F33A46DdF3c3Be642fF10"
+  },
+  "SimpleFundStableCoinParamsModule": {
+    "USDC": "0x9eB0faA2Cd6f989b513C891E8A5E8c0CC13C9335",
+    "USDT": "0x05a9898438809cB6Bb7F33A46DdF3c3Be642fF10"
+  },
+  "FundStableCoinParamsModule": {
+    "USDC": "0x9eB0faA2Cd6f989b513C891E8A5E8c0CC13C9335",
+    "USDT": "0x05a9898438809cB6Bb7F33A46DdF3c3Be642fF10"
+  }
 }

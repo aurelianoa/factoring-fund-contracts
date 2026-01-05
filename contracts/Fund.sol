@@ -138,6 +138,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
+        require(token != address(0), "Invalid token address");
 
         Investor storage investor = investors[msg.sender];
         require(
@@ -257,7 +258,10 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
                 offerConfig.preferredStablecoin == address(USDT),
             "Invalid preferred stablecoin"
         );
-
+        require(
+            offerConfig.preferredStablecoin != address(0),
+            "Invalid preferred stablecoin"
+        );
         // Get bill request details
         FactoringContract.BillRequest memory billRequest = factoringContract
             .getBillRequest(billRequestId);
@@ -420,6 +424,7 @@ contract Fund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
+        require(token != address(0), "Invalid token address");
         require(
             amount <= managementFeesCollected,
             "Insufficient management fees"

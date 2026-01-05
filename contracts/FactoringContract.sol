@@ -37,6 +37,11 @@ contract FactoringContract is
 
     // Constants
     uint256 public constant BASIS_POINTS = 10_000; /// 100 * 100 basis points = 100%
+    uint256 public constant MAX_FEE_PERCENTAGE = 1000; // 10% maximum fee
+    uint256 public constant MAX_INTEREST_RATE = 5000; // 50% maximum interest rate
+    uint256 public constant MAX_DUE_DATE_DURATION = 1825 days; // 5 years maximum
+    uint256 public constant MAX_BILLS_PER_OWNER = 1000; // Maximum bills per owner
+
     uint256 public debtorFeePercentage = 40; // 0.4% debtor fee
     uint256 public lenderFeePercentage = 10; // 0.1% lender fee
     uint256 public numberofDaysPerMonth = 30;
@@ -173,6 +178,9 @@ contract FactoringContract is
     );
     event BillRequestCancelled(uint256 indexed billRequestId);
     event OfferWithdrawn(uint256 indexed offerId, address indexed lender);
+    event DebtorFeeUpdated(uint256 oldFee, uint256 newFee);
+    event LenderFeeUpdated(uint256 oldFee, uint256 newFee);
+    event DaysPerMonthUpdated(uint256 oldDays, uint256 newDays);
 
     constructor(
         address _usdc,
@@ -197,8 +205,12 @@ contract FactoringContract is
         uint256 _rateInterest
     ) external onlyOwner {
         require(
-            _upfrontPercentage > 0,
-            "All percentages must be greater than 0"
+            _upfrontPercentage > 0 && _upfrontPercentage <= BASIS_POINTS,
+            "Upfront percentage must be between 0 and 100%"
+        );
+        require(
+            _rateInterest <= MAX_INTEREST_RATE,
+            "Interest rate exceeds maximum"
         );
 
         defaultConditions = Conditions({
@@ -215,7 +227,12 @@ contract FactoringContract is
      */
     function setDebtorFee(uint256 _fee) external onlyOwner {
         require(_fee > 0, "Fee must be greater than 0");
+        require(_fee <= MAX_FEE_PERCENTAGE, "Fee exceeds maximum");
+
+        uint256 oldFee = debtorFeePercentage;
         debtorFeePercentage = _fee;
+
+        emit DebtorFeeUpdated(oldFee, _fee);
     }
 
     /**
@@ -224,12 +241,22 @@ contract FactoringContract is
      */
     function setLenderFee(uint256 _fee) external onlyOwner {
         require(_fee > 0, "Fee must be greater than 0");
+        require(_fee <= MAX_FEE_PERCENTAGE, "Fee exceeds maximum");
+
+        uint256 oldFee = lenderFeePercentage;
         lenderFeePercentage = _fee;
+
+        emit LenderFeeUpdated(oldFee, _fee);
     }
 
     function setNumberOfDaysPerMonth(uint256 _days) external onlyOwner {
         require(_days > 0, "Days must be greater than 0");
+        require(_days <= 31, "Days cannot exceed 31");
+
+        uint256 oldDays = numberofDaysPerMonth;
         numberofDaysPerMonth = _days;
+
+        emit DaysPerMonthUpdated(oldDays, _days);
     }
 
     /**
@@ -243,6 +270,14 @@ contract FactoringContract is
     ) external nonReentrant whenNotPaused returns (uint256) {
         require(totalAmount > 0, "Amount must be greater than 0");
         require(dueDate > block.timestamp, "Due date must be in the future");
+        require(
+            dueDate <= block.timestamp + MAX_DUE_DATE_DURATION,
+            "Due date exceeds maximum duration"
+        );
+        require(
+            ownerBills[msg.sender].length < MAX_BILLS_PER_OWNER,
+            "Maximum bills per owner reached"
+        );
 
         uint256 billRequestId = _nextBillId++;
 
@@ -292,13 +327,18 @@ contract FactoringContract is
             stablecoin == address(USDC) || stablecoin == address(USDT),
             "Unsupported stablecoin"
         );
+        require(stablecoin != address(0), "Invalid stablecoin address");
         require(
             conditions.upfrontPercentage <= BASIS_POINTS,
-            "Invalid conditions: sum cannot exceed 100%"
+            "Invalid conditions: upfront cannot exceed 100%"
         );
         require(
             conditions.upfrontPercentage > 0,
-            "All condition percentages must be greater than 0"
+            "Upfront percentage must be greater than 0"
+        );
+        require(
+            conditions.rateInterest <= MAX_INTEREST_RATE,
+            "Interest rate exceeds maximum"
         );
 
         uint256 offerId = _nextOfferId++;
@@ -465,25 +505,48 @@ contract FactoringContract is
 
         // Get current NFT owner (should be the lender)
         address currentOwner = ownerOf(billId);
-        uint256 fees = (bill.upfrontPaid * bill.lenderFeePercentage) /
-            BASIS_POINTS; // Fees based on bill conditions
-        // Keep fees in contract
-        poolBalances[bill.stablecoin] += fees;
-        totalPoolBalance += fees;
-        /// days passed: get the days passed since startDate until now
-        // Get the number of days passed since startDate until now
-        uint256 daysPassed = (block.timestamp - bill.startDate) / 1 days;
-        // calculate the interest based on the conditions from the startDate until now (in days 30)
-        uint256 interest = (bill.upfrontPaid * bill.conditions.rateInterest * daysPassed) /
-            numberofDaysPerMonth / BASIS_POINTS; // Interest based on bill conditions
-        // Calculate distributions using bill's conditions
-        uint256 ownerPayment = bill.upfrontPaid + interest - fees;
-        uint256 debtorPayment = totalPayment - ownerPayment - fees;
 
-        // Pay current NFT owner the completion percentage + upfront paid
-        if(ownerPayment > totalPayment) {
-            ownerPayment = totalPayment - fees; // Ensure ownerPayment does not exceed totalPayment
-        } 
+        // Calculate lender fees
+        uint256 lenderFees = (bill.upfrontPaid * bill.lenderFeePercentage) /
+            BASIS_POINTS;
+
+        // Calculate interest with overflow protection
+        // Use safe math by dividing early to prevent overflow
+        uint256 daysPassed = (block.timestamp - bill.startDate) / 1 days;
+        uint256 interest = 0;
+        if (daysPassed > 0 && bill.conditions.rateInterest > 0) {
+            // Calculate: (upfrontPaid * rateInterest / BASIS_POINTS) * daysPassed / daysPerMonth
+            // This order prevents overflow for reasonable values
+            uint256 dailyRate = (bill.upfrontPaid *
+                bill.conditions.rateInterest) /
+                BASIS_POINTS /
+                numberofDaysPerMonth;
+            interest = dailyRate * daysPassed;
+        }
+
+        // Calculate owner payment: upfront + interest - fees
+        uint256 ownerPayment = bill.upfrontPaid + interest;
+
+        // Ensure we have enough to cover fees
+        require(
+            totalPayment >= lenderFees,
+            "Payment insufficient to cover fees"
+        );
+
+        // Ensure owner payment doesn't exceed what's available after fees
+        uint256 availableForOwner = totalPayment - lenderFees;
+        if (ownerPayment > availableForOwner) {
+            ownerPayment = availableForOwner;
+        }
+
+        // Calculate debtor refund (if any)
+        uint256 debtorPayment = totalPayment - ownerPayment - lenderFees;
+
+        // Keep fees in contract
+        poolBalances[bill.stablecoin] += lenderFees;
+        totalPoolBalance += lenderFees;
+
+        // Pay current NFT owner
         IERC20(bill.stablecoin).safeTransfer(currentOwner, ownerPayment);
         // Pay debtor the remaining amount (if any)
         if (debtorPayment > 0) {
@@ -498,7 +561,7 @@ contract FactoringContract is
 
         emit BillCompleted(billId, totalPayment);
         emit BillNFTBurned(billId, currentOwner);
-        emit FeesCollected(fees, bill.stablecoin);
+        emit FeesCollected(lenderFees, bill.stablecoin);
     }
 
     /**

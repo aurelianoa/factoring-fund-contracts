@@ -48,6 +48,9 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
     mapping(uint256 => bool) public upfrontPaymentWithdrawn; // Bill ID => withdrawn
     mapping(uint256 => bool) public debtorPaymentWithdrawn; // Bill ID => withdrawn
 
+    // Funds tracking
+    mapping(address => uint256) public committedFunds; // Token => amount committed to active offers/bills
+
     // Events
     event FundsDeposited(
         address indexed depositor,
@@ -196,6 +199,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             stablecoin == address(USDC) || stablecoin == address(USDT),
             "Unsupported stablecoin"
         );
+        require(stablecoin != address(0), "Invalid stablecoin address");
 
         // Get bill request details
         FactoringContract.BillRequest memory billRequest = factoringContract
@@ -206,10 +210,15 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Calculate required upfront amount
         uint256 upfrontAmount = (billRequest.totalAmount *
             conditions.upfrontPercentage) / factoringContract.BASIS_POINTS();
+
+        // Check available balance (not just total balance)
         require(
-            IERC20(stablecoin).balanceOf(address(this)) >= upfrontAmount,
-            "Insufficient fund balance"
+            getAvailableBalance(stablecoin) >= upfrontAmount,
+            "Insufficient available balance"
         );
+
+        // Track committed funds
+        committedFunds[stablecoin] += upfrontAmount;
 
         // Approve FactoringContract to spend our tokens for the offer
         IERC20(stablecoin).approve(address(factoringContract), upfrontAmount);
@@ -244,6 +253,20 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         // Check that the fund owns the NFT for this bill request
         address nftOwner = factoringContract.ownerOf(offer.billRequestId);
         require(nftOwner == address(this), "Fund does not own the NFT");
+
+        // When accepting an offer created by others, release our committed funds
+        // (since we won't need to fund this bill request anymore)
+        if (billRequestToOffer[offer.billRequestId] != 0) {
+            FactoringContract.Offer memory ourOffer = factoringContract
+                .getOffer(billRequestToOffer[offer.billRequestId]);
+            if (
+                ourOffer.lender == address(this) &&
+                uint256(ourOffer.status) == 0
+            ) {
+                committedFunds[ourOffer.stablecoin] -= ourOffer.depositedAmount;
+            }
+        }
+
         // Accept the offer
         factoringContract.acceptOffer(offerId);
     }
@@ -266,6 +289,9 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         );
         require(uint256(offer.status) == 0, "Offer not active"); // 0 = OfferStatus.Active
 
+        // Release committed funds before withdrawal
+        committedFunds[offer.stablecoin] -= offer.depositedAmount;
+
         // Withdraw the offer from FactoringContract (this will refund the tokens)
         factoringContract.withdrawOffer(offerId);
 
@@ -287,13 +313,15 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
         require(bill.debtor == address(this), "Fund is not the debtor");
         require(
             uint256(bill.status) == 0,
-            "Bill not open for payment" // 0 = BillStatus.Open
+            "Bill not active" // 0 = BillStatus.Active
         );
-        // Check if this contract does have the balance in the bill stablecoin
+
+        // Check available balance
         require(
-            getFundBalance(bill.stablecoin) >= bill.totalAmount,
-            "Insufficient fund balance"
+            getAvailableBalance(bill.stablecoin) >= bill.totalAmount,
+            "Insufficient available balance"
         );
+
         // Approve FactoringContract to spend our tokens for bill completion
         IERC20(bill.stablecoin).approve(
             address(factoringContract),
@@ -315,6 +343,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             token == address(USDC) || token == address(USDT),
             "Unsupported token"
         );
+        require(token != address(0), "Invalid token address");
 
         /// calculate the fundConfig fees to transfer
         uint256 feesToWithdraw = (getFundBalance(token) *
@@ -339,6 +368,7 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
             "Unsupported stablecoin"
         );
         require(receiver != address(0), "Invalid receiver address");
+        require(stablecoin != address(0), "Invalid stablecoin address");
 
         // Get actual balance from the stablecoin contract
         uint256 actualBalance = IERC20(stablecoin).balanceOf(address(this));
@@ -482,6 +512,17 @@ contract SimpleFund is ReentrancyGuard, Pausable, Authorized, IERC721Receiver {
      */
     function getFundBalance(address token) public view returns (uint256) {
         return IERC20(token).balanceOf(address(this));
+    }
+
+    /**
+     * @dev Get available balance (total balance minus committed funds)
+     * @param token Token address
+     * @return Available balance for new offers/operations
+     */
+    function getAvailableBalance(address token) public view returns (uint256) {
+        uint256 totalBalance = IERC20(token).balanceOf(address(this));
+        uint256 committed = committedFunds[token];
+        return totalBalance > committed ? totalBalance - committed : 0;
     }
 
     /**

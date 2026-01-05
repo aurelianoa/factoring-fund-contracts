@@ -2,7 +2,19 @@
 
 A comprehensive smart contract system for factoring finance using USDC/USDT stablecoins. This system enables businesses to factor their accounts receivable (bills) for immediate cash flow while providing investors with opportunities to earn returns.
 
-## 🚀 Features
+## � Table of Contents
+- [Features](#-features)
+- [System Architecture](#-system-architecture)
+- [Workflow Diagrams](#-workflow-diagrams)
+- [Contract Architecture](#-contract-architecture)
+- [Project Structure](#-project-structure)
+- [Installation](#-installation)
+- [Testing](#-testing)
+- [Deployment](#-deployment)
+- [Contract Interactions](#-contract-interactions)
+- [Security](#-security-considerations)
+
+## �🚀 Features
 
 ### Core Functionality
 - **Bill Factoring**: Convert accounts receivable into immediate cash
@@ -38,6 +50,435 @@ Each bill can have custom conditions or use default settings:
 - **Reentrancy Protection**: Prevents reentrancy attacks
 - **Pausable**: Emergency pause functionality
 - **SafeERC20**: Secure token transfer operations
+
+## 🏗 System Architecture
+
+### Contract Inheritance & Composition
+
+```mermaid
+classDiagram
+    class ERC721 {
+        <<OpenZeppelin>>
+        +ownerOf()
+        +transferFrom()
+        +approve()
+    }
+    
+    class ReentrancyGuard {
+        <<OpenZeppelin>>
+        +nonReentrant
+    }
+    
+    class Pausable {
+        <<OpenZeppelin>>
+        +pause()
+        +unpause()
+    }
+    
+    class Authorized {
+        <<Privylabs>>
+        +onlyOwner
+        +onlyAuthorizedAdmin
+    }
+    
+    class BillNFT {
+        +_mintBillNFT()
+        +getNFTOwner()
+        +_update()
+    }
+    
+    class FactoringContract {
+        +createBillRequest()
+        +createOffer()
+        +acceptOffer()
+        +completeBill()
+        +withdrawOffer()
+        +cancelBillRequest()
+    }
+  # System Constants & Limits
+
+```mermaid
+graph LR
+    subgraph "FactoringContract Constants"
+        C1["BASIS_POINTS<br/>10,000"]
+        C2["MAX_FEE_PERCENTAGE<br/>1,000 (10%)"]
+        C3["MAX_INTEREST_RATE<br/>5,000 (50%)"]
+        C4["MAX_DUE_DATE_DURATION<br/>1,825 days (5 years)"]
+        C5["MAX_BILLS_PER_OWNER<br/>1,000"]
+    end
+    
+    subgraph "Default Fees"
+        F1["debtorFeePercentage<br/>40 (0.4%)"]
+        F2["lenderFeePercentage<br/>10 (0.1%)"]
+    end
+    
+    subgraph "Default Conditions"
+        DC1["upfrontPercentage<br/>8,000 (80%)"]
+        DC2["rateInterest<br/>200 (2% monthly)"]
+    end
+    
+    subgraph "Time Parameters"
+        T1["numberofDaysPerMonth<br/>30 days"]
+    end
+    
+    style C1 fill:#E3F2FD
+    style C2 fill:#FFEBEE
+    style C3 fill:#FFEBEE
+    style C4 fill:#FFF3E0
+    style C5 fill:#F3E5F5
+    style F1 fill:#E8F5E9
+    style F2 fill:#E8F5E9
+    style DC1 fill:#FFF9C4
+    style DC2 fill:#FFF9C4
+    style T1 fill:#E0F2F1
+```
+
+##  
+    class SimpleFund {
+        +deposit()
+        +withdraw()
+        +createOfferForBillRequest()
+        +acceptOfferForOwnedBill()
+        +payBillForDebtor()
+        +getAvailableBalance()
+    }
+    
+    class Fund {
+        +invest()
+        +withdraw()
+        +createOfferAutomatically()
+        +handleBillCompletion()
+        +getInvestorValue()
+    }
+    
+    ERC721 <|-- BillNFT
+    BillNFT <|-- FactoringContract
+    ReentrancyGuard <|-- FactoringContract
+    Pausable <|-- FactoringContract
+    Authorized <|-- FactoringContract
+    
+    ReentrancyGuard <|-- SimpleFund
+    Pausable <|-- SimpleFund
+    Authorized <|-- SimpleFund
+    
+    ReentrancyGuard <|-- Fund
+    Pausable <|-- Fund
+    Authorized <|-- Fund
+    
+    FactoringContract o-- SimpleFund : uses
+    FactoringContract o-- Fund : uses
+```
+
+### Data Structure Relationships
+
+```mermaid
+erDiagram
+    BILL_REQUEST ||--o{ OFFER : "has multiple"
+    OFFER ||--o| BILL : "creates one"
+    BILL ||--|| NFT : "represented by"
+    BILL ||--|| CONDITIONS : "follows"
+    LENDER ||--o{ OFFER : "creates"
+    DEBTOR ||--o{ BILL_REQUEST : "creates"
+    NFT_OWNER ||--o{ BILL : "owns"
+    
+    BILL_REQUEST {
+        uint256 id
+        address debtor
+        uint256 totalAmount
+        uint256 dueDate
+        enum status
+    }
+    
+    OFFER {
+        uint256 id
+        uint256 billRequestId
+        address lender
+        address stablecoin
+        uint256 depositedAmount
+        uint256 debtorFeePercentage
+        uint256 lenderFeePercentage
+        enum status
+    }
+    
+    BILL {
+        uint256 id
+        address debtor
+        address lender
+        address stablecoin
+        uint256 totalAmount
+        uint256 upfrontPaid
+        uint256 startDate
+        uint256 dueDate
+        enum status
+    }
+    
+    CONDITIONS {
+        uint256 upfrontPercentage
+        uint256 rateInterest
+    }
+    
+    NFT {
+        uint256 tokenId
+        address owner
+    }
+```
+
+### High-Level Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Users"
+        D[Debtor/Business]
+        L[Lender/Investor]
+        F[Fund Manager]
+    end
+    
+    subgraph "Smart Contracts"
+        FC[FactoringContract]
+        BN[BillNFT]
+        SF[SimpleFund]
+        MF[Fund]
+    end
+    
+    subgraph "Tokens"
+        USDC[USDC Token]
+        USDT[USDT Token]
+    end
+    
+    D -->|Creates Bill Request| FC
+    L -->|Creates Offer| FC
+    D -->|Accepts Offer| FC
+    FC -->|Mints NFT| BN
+    FC -->|Transfers Upfront| D
+    D -->|Pays Full Amount| FC
+    FC -->|Distributes Funds| L
+    
+    F -->|Manages| SF
+    F -->|Manages| MF
+    SF -->|Creates Offers| FC
+    MF -->|Creates Offers| FC
+    
+    FC -.->|Uses| USDC
+    FC -.->|Uses| USDT
+    
+    style FC fill:#4CAF50
+    style BN fill:#2196F3
+    style SF fill:#FF9800
+    style MF fill:#FF9800
+```
+
+### Component Interaction Flow
+
+```mermaid
+sequenceDiagram
+    participant D as Debtor
+    participant FC as FactoringContract
+    participant NFT as BillNFT
+    participant L as Lender
+    participant Token as USDC/USDT
+    
+    Note over D,Token: Bill Request & Offer Phase
+    D->>FC: createBillRequest(amount, dueDate)
+    FC->>NFT: mint(tokenId, debtor)
+    NFT-->>D: NFT Ownership
+    
+    L->>Token: approve(FactoringContract, amount)
+    L->>FC: createOffer(billRequestId, stablecoin, conditions)
+    FC->>Token: transferFrom(lender, contract, upfrontAmount)
+    
+    Note over D,Token: Acceptance Phase
+    D->>FC: acceptOffer(offerId)
+    FC->>Token: transfer(debtor, upfrontAmount - debtorFee)
+    FC->>NFT: transfer(debtor → lender)
+    NFT-->>L: NFT Ownership
+    
+    Note over D,Token: Completion Phase
+    D->>Token: approve(FactoringContract, totalAmount)
+    D->>FC: completeBill(billId)
+    FC->>Token: transferFrom(debtor, contract, totalAmount)
+    FC->>Token: transfer(lender, upfront + interest - fees)
+    FC->>Token: transfer(debtor, remainder)
+    FC->>NFT: burn(tokenId)
+```
+
+## 📊 Workflow Diagrams
+
+### 1. Bill Lifecycle State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open: createBillRequest()
+    Open --> Accepted: acceptOffer()
+    Open --> Cancelled: cancelBillRequest()
+    Accepted --> Active: NFT transferred to Lender
+    Active --> Completed: completeBill()
+    Active --> Defaulted: markBillDefaulted()
+    Cancelled --> [*]
+    Completed --> [*]
+    Defaulted --> [*]
+    
+    note right of Open
+        Debtor receives NFT
+        Multiple offers possible
+    end note
+    
+    note right of Active
+        Bill is funded
+        Debtor got upfront payment
+    end note
+    
+    note right of Completed
+        All payments distributed
+        NFT burned
+    end note
+```
+
+### 2. Offer Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Active: createOffer()
+    Active --> Accepted: acceptOffer()
+    Active --> Withdrawn: withdrawOffer()
+    Active --> Expired: Another offer accepted
+    
+    Accepted --> [*]: Bill created
+    Withdrawn --> [*]: Funds returned
+    Expired --> [*]: Funds returned
+    
+    note right of Active
+        Funds locked in contract
+        Lender can withdraw
+    end note
+    
+    note right of Accepted
+        Only one offer accepted
+        Others auto-expired
+    end note
+```
+
+### 3. Complete Bill Payment Flow
+
+```mermaid
+graph TD
+    A[Debtor Initiates completeBill] --> B{Bill Active?}
+    B -->|No| Z1[Revert: Bill not active]
+    B -->|Yes| C[Transfer totalAmount from Debtor]
+    
+    C --> D[Calculate Lender Fees]
+    D --> E[Calculate Interest based on days passed]
+    E --> F[Calculate Owner Payment:<br/>upfront + interest - fees]
+    
+    F --> G{Owner Payment > Available?}
+    G -->|Yes| H[Cap at available - fees]
+    G -->|No| I[Use calculated amount]
+    
+    H --> J[Calculate Debtor Refund]
+    I --> J
+    
+    J --> K[Transfer to Lender:<br/>Owner Payment]
+    K --> L{Debtor Refund > 0?}
+    L -->|Yes| M[Transfer to Debtor:<br/>Refund Amount]
+    L -->|No| N[Skip Refund]
+    
+    M --> O[Store Fees in Pool]
+    N --> O
+    O --> P[Burn NFT]
+    P --> Q[Update Bill Status: Completed]
+    Q --> R[Emit Events]
+    R --> S[End]
+    
+    style C fill:#90EE90
+    style K fill:#FFD700
+    style M fill:#87CEEB
+    style O fill:#FFA07A
+    style P fill:#FF6B6B
+```
+
+### 4. Interest Calculation Flow
+
+```mermaid
+graph LR
+    A[Start Date] --> B[Current Date]
+    B --> C[Calculate Days Passed]
+    C --> D[Apply Rate Interest]
+    
+    subgraph "Calculation"
+        D --> E["dailyRate = (upfrontPaid × rateInterest) ÷ BASIS_POINTS ÷ daysPerMonth"]
+        E --> F["interest = dailyRate × daysPassed"]
+    end
+    
+    F --> G[Add to Owner Payment]
+    
+    style E fill:#FFE4B5
+    style F fill:#FFE4B5
+    
+    Note1[Rate Interest: 2% = 200 BP]
+    Note2[Days Per Month: 30 days]
+    Note3[Prevents Overflow]
+```
+
+### 5. Fund Contract Interaction
+
+```mermaid
+graph TB
+    subgraph "SimpleFund Operations"
+        SF1[Deposit Funds] --> SF2[Create Bill Request<br/>as Debtor]
+        SF2 --> SF3[Create Offer<br/>as Lender]
+        SF3 --> SF4[Accept Offer<br/>if Fund owns NFT]
+        SF4 --> SF5[Bill Completion]
+        SF5 --> SF6[Withdraw Payments]
+    end
+    
+    subgraph "Fund Operations"
+        F1[Investors Deposit] --> F2[Pool Funds]
+        F2 --> F3[Auto-Create Offers]
+        F3 --> F4[Bill Completion]
+        F4 --> F5[Distribute Profits<br/>to Investors]
+        F5 --> F6[Collect Management Fees]
+    end
+    
+    subgraph "Committed Funds Tracking"
+        T1[Available Balance] --> T2{Create Offer?}
+        T2 -->|Yes| T3[Lock Committed Funds]
+        T3 --> T4{Offer Accepted?}
+        T4 -->|Yes| T5[Keep Locked]
+        T4 -->|No| T6[Release Funds]
+        T5 --> T7[Bill Complete]
+        T7 --> T8[Release Funds]
+    end
+    
+    style SF2 fill:#FFE4B5
+    style SF3 fill:#90EE90
+    style F3 fill:#90EE90
+    style T3 fill:#FFB6C1
+    style T6 fill:#87CEEB
+    style T8 fill:#87CEEB
+```
+
+### 6. Security & Validation Flow
+
+```mermaid
+graph TD
+    A[User Action] --> B{Input Validation}
+    B -->|Invalid| C[Revert with Error]
+    B -->|Valid| D{Access Control}
+    D -->|Unauthorized| C
+    D -->|Authorized| E{Reentrancy Check}
+    E -->|Locked| C
+    E -->|Unlocked| F{Pause Status}
+    F -->|Paused| C
+    F -->|Active| G{Amount Checks}
+    G -->|Insufficient| C
+    G -->|Sufficient| H[Execute Action]
+    H --> I[Update State]
+    I --> J[Emit Events]
+    J --> K[Return Success]
+    
+    style C fill:#FF6B6B
+    style H fill:#90EE90
+    style K fill:#4CAF50
+```
 
 ## 🏗 Contract Architecture
 
@@ -308,6 +749,53 @@ npx hardhat ignition deploy ./ignition/modules/FundModule.ts --network sepolia
 
 ## 📊 Contract Interactions
 
+### Interaction Overview
+
+```mermaid
+graph TB
+    subgraph "Phase 1: Bill Request Creation"
+        A1[Debtor] -->|1. createBillRequest| FC1[FactoringContract]
+        FC1 -->|2. Mint NFT| A1
+        FC1 -->|3. Store Request| DB1[(BillRequest Storage)]
+    end
+    
+    subgraph "Phase 2: Offer Creation"
+        L1[Lender] -->|1. Approve Tokens| TOKEN1[USDC/USDT]
+        L1 -->|2. createOffer| FC2[FactoringContract]
+        FC2 -->|3. Lock Funds| TOKEN1
+        FC2 -->|4. Store Offer| DB2[(Offer Storage)]
+    end
+    
+    subgraph "Phase 3: Offer Acceptance"
+        A2[Debtor/NFT Owner] -->|1. acceptOffer| FC3[FactoringContract]
+        FC3 -->|2. Transfer Upfront - Fees| A2
+        FC3 -->|3. Transfer NFT| L2[Lender]
+        FC3 -->|4. Store Fees| POOL1[Fee Pool]
+        FC3 -->|5. Refund Other Offers| L3[Other Lenders]
+        FC3 -->|6. Create Bill| DB3[(Bill Storage)]
+    end
+    
+    subgraph "Phase 4: Bill Completion"
+        A3[Debtor] -->|1. Approve Total Amount| TOKEN2[USDC/USDT]
+        A3 -->|2. completeBill| FC4[FactoringContract]
+        FC4 -->|3. Calculate Interest| CALC[Interest Calculator]
+        FC4 -->|4. Pay Lender| L4[Current NFT Owner]
+        FC4 -->|5. Refund Debtor| A3
+        FC4 -->|6. Store Fees| POOL2[Fee Pool]
+        FC4 -->|7. Burn NFT| NFT1[NFT Contract]
+        FC4 -->|8. Update Status| DB4[(Bill Storage)]
+    end
+    
+    style A1 fill:#FFE4B5
+    style L1 fill:#90EE90
+    style A2 fill:#FFE4B5
+    style L2 fill:#90EE90
+    style A3 fill:#FFE4B5
+    style L4 fill:#90EE90
+    style POOL1 fill:#FFA07A
+    style POOL2 fill:#FFA07A
+```
+
 ### For Investors
 1. **Deposit to Pool**
    ```solidity
@@ -421,6 +909,95 @@ The contracts are optimized for gas efficiency:
 
 ## 🔐 Security Considerations
 
+### Security Architecture
+
+```mermaid
+graph TB
+    subgraph "Input Validation Layer"
+        V1[Amount > 0]
+        V2[Address != 0x0]
+        V3[Fees <= MAX_FEE]
+        V4[Interest <= MAX_RATE]
+        V5[Duration <= MAX_DURATION]
+        V6[Bills <= MAX_PER_OWNER]
+    end
+    
+    subgraph "Access Control Layer"
+        AC1[onlyOwner]
+        AC2[onlyAuthorizedAdmin]
+        AC3[onlyAuthorizedOperator]
+        AC4[NFT Owner Check]
+    end
+    
+    subgraph "State Protection Layer"
+        SP1[ReentrancyGuard]
+        SP2[Pausable]
+        SP3[Status Checks]
+        SP4[Balance Checks]
+    end
+    
+    subgraph "Overflow Protection Layer"
+        OP1[Safe Math Operations]
+        OP2[Early Division]
+        OP3[Result Validation]
+    end
+    
+    subgraph "Token Safety Layer"
+        TS1[SafeERC20]
+        TS2[Approve Before Transfer]
+        TS3[Balance Verification]
+    end
+    
+    V1 & V2 & V3 & V4 & V5 & V6 --> AC1 & AC2 & AC3 & AC4
+    AC1 & AC2 & AC3 & AC4 --> SP1 & SP2 & SP3 & SP4
+    SP1 & SP2 & SP3 & SP4 --> OP1 & OP2 & OP3
+    OP1 & OP2 & OP3 --> TS1 & TS2 & TS3
+    TS1 & TS2 & TS3 --> ACTION[Execute Action]
+    
+    style V1 fill:#E3F2FD
+    style V2 fill:#E3F2FD
+    style V3 fill:#E3F2FD
+    style AC1 fill:#FFF3E0
+    style AC2 fill:#FFF3E0
+    style SP1 fill:#FFEBEE
+    style SP2 fill:#FFEBEE
+    style OP1 fill:#F3E5F5
+    style TS1 fill:#E8F5E9
+    style ACTION fill:#4CAF50
+```
+
+### Fee Calculation & Distribution
+
+```mermaid
+graph LR
+    subgraph "On Offer Acceptance"
+        OA1[Upfront Amount] --> OA2[Debtor Fee: 0.4%]
+        OA2 --> OA3[Net to Debtor]
+        OA2 --> OA4[To Fee Pool]
+    end
+    
+    subgraph "On Bill Completion"
+        BC1[Total Payment] --> BC2{Calculate}
+        BC2 --> BC3[Lender Fee: 0.1%]
+        BC2 --> BC4[Interest: Rate × Days]
+        BC2 --> BC5[Owner Payment:<br/>Upfront + Interest - Fees]
+        BC2 --> BC6[Debtor Refund:<br/>Remainder]
+        
+        BC3 --> POOL[Fee Pool]
+        BC5 --> LENDER[Lender]
+        BC6 --> DEBTOR[Debtor]
+    end
+    
+    OA4 --> POOL
+    
+    style OA2 fill:#FFB6C1
+    style BC3 fill:#FFB6C1
+    style BC4 fill:#87CEEB
+    style BC5 fill:#90EE90
+    style BC6 fill:#FFE4B5
+    style POOL fill:#FFA07A
+```
+
 ### Implemented Security Measures
 - **ReentrancyGuard**: Prevents reentrancy attacks
 - **Pausable**: Emergency stop functionality
@@ -458,3 +1035,79 @@ For support and questions:
 ---
 
 **⚠️ Disclaimer**: This is experimental software. Use at your own risk. Conduct thorough testing and auditing before deploying to mainnet.
+
+## 📚 Additional Documentation
+
+### Comprehensive Guides
+
+- **[Architecture Documentation](docs/ARCHITECTURE.md)** - Deep dive into system design, data flows, and technical decisions
+  - System overview and design principles
+  - Contract hierarchy and relationships
+  - Data flow diagrams
+  - State management patterns
+  - Security model
+  - Gas optimization strategies
+
+- **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)** - Complete deployment instructions for all environments
+  - Pre-deployment checklist
+  - Network configurations
+  - Deployment strategies
+  - Post-deployment verification
+  - Monitoring and maintenance
+  - Troubleshooting
+
+- **[Improvements Applied](IMPROVEMENTS_APPLIED.md)** - Recent security enhancements and fixes
+  - Critical security fixes
+  - Overflow protection
+  - Fee validation
+  - Balance tracking improvements
+
+### Quick Reference
+
+| Topic | File | Description |
+|-------|------|-------------|
+| Contract APIs | `contracts/*.sol` | NatSpec documented functions |
+| Tests | `test/*.test.ts` | Usage examples and edge cases |
+| Deployment Modules | `ignition/modules/` | Hardhat Ignition configurations |
+| Deployment Docs | `ignition/README.md` | Module-specific deployment |
+
+### Visual Documentation
+
+This README includes comprehensive mermaid diagrams for:
+- ✅ System architecture
+- ✅ Bill lifecycle flow
+- ✅ Offer lifecycle
+- ✅ Interest calculation
+- ✅ Security validation layers
+- ✅ Fee distribution
+- ✅ Fund operations
+
+### Getting Help
+
+```mermaid
+graph LR
+    Q[Question?] --> T{Type?}
+    T -->|Usage| D1[Check README Examples]
+    T -->|Architecture| D2[Read ARCHITECTURE.md]
+    T -->|Deployment| D3[Read DEPLOYMENT_GUIDE.md]
+    T -->|Bug| I[Create GitHub Issue]
+    T -->|Security| S[Security Contact]
+    
+    D1 --> H{Resolved?}
+    D2 --> H
+    D3 --> H
+    H -->|No| I
+    
+    style I fill:#FFA500
+    style S fill:#FF6B6B
+```
+
+For support:
+1. 📖 Check the relevant documentation file
+2. 🔍 Review test files for examples
+3. 🐛 Create an issue for bugs
+4. 🔒 Email security concerns privately
+
+---
+
+**Built with ❤️ for the DeFi community**

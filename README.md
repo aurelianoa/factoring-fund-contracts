@@ -95,7 +95,8 @@ classDiagram
         +withdrawOffer()
         +cancelBillRequest()
     }
-  # System Constants & Limits
+```
+### System Constants & Limits
 
 ```mermaid
 graph LR
@@ -133,7 +134,7 @@ graph LR
     style T1 fill:#E0F2F1
 ```
 
-##  
+```mermaid
     class SimpleFund {
         +deposit()
         +withdraw()

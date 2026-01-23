@@ -135,6 +135,7 @@ graph LR
 ```
 
 ```mermaid
+classDiagram
     class SimpleFund {
         +deposit()
         +withdraw()
